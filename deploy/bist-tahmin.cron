@@ -1,0 +1,15 @@
+# /etc/cron.d/bist-tahmin  (PROJE.md Bolum 12, 19)
+# Bu dosyadaki TUM satirlar Istanbul saatiyle calisir (CRON_TZ). Ayri cron.d dosyasi kullanilir cunku CRON_TZ,
+# bir crontab'in sonraki TUM satirlarini etkiler; root crontab'indaki Berlin saatli isler kaymasin.
+# Kurulum: sudo cp deploy/bist-tahmin.cron /etc/cron.d/bist-tahmin && sudo chmod 644 /etc/cron.d/bist-tahmin
+CRON_TZ=Europe/Istanbul
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Hafta ici 19:00: evren -> indir+kalite -> coz -> tahmin. 19:45: yalnizca bugun basarisizsa yeniden dene
+# (RETRY=1; gec gelen veri icin). Resmi tatillerde bar olmaz: akis bayat saymaz, idempotenttir.
+0 19 * * 1-5 root /opt/bist-tahmin/deploy/cron_run.sh run-daily run-daily
+45 19 * * 1-5 root RETRY=1 /opt/bist-tahmin/deploy/cron_run.sh run-daily run-daily
+
+# Cumartesi 10:00 haftalik rapor (salt okunur) -> /opt/bist-tahmin/reports/rapor-YYYY-AA-GG.md
+0 10 * * 6 root /opt/bist-tahmin/deploy/cron_weekly.sh
