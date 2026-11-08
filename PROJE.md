@@ -448,11 +448,12 @@ Her faz, kabul kriterleri sağlanmadan kapatılmaz.
 - Doğrulama: 34 test yeşil (gömülü Postgres 16). Tetikleyiciler ve sütun yetkileri kasıtlı olarak bozulduğunda ilgili testler kırıldı (5 ve 7 başarısız), geri yüklenince yeşil. `bist init` CLI ile iki kez çalıştırıldı (ikincisi değişiklik yapmadı), `--dry-run` doğrulandı.
 - **Doğrulanmadı:** Docker imajı derlenmedi ve gerçek `postgres:16` konteyneriyle test koşulmadı (yerel WSL'de Docker yok); Contabo sunucusunda henüz kurulum yapılmadı.
 
-**Faz 1: Veri** — *yerelde TAMAMLANDI (2026-11-08); Contabo kurulumu bekliyor*
+**Faz 1: Veri** — *TAMAMLANDI (yerelde ve Contabo'da, 2026-11-08)*
 - borsapy ile BIST 30 indirme, kalite kontrolü, `prices`, `corporate_actions`, `universe_membership`, `trading_calendar`
 - `adjust=False`'un ham fiyat verdiği doğrulanır
 - Kabul: 30 hissenin tamamı için en az son 1 yıllık (tercihen tüm mevcut geçmiş) veri; kalite raporu; eksik hisseler loglanmış
 - Doğrulama (gömülü Postgres + gerçek borsapy verisi, `bist universe sync` ve `bist fetch --since 2025-11-08`): 30 hisse × 250 işlem günü, kalite raporu çıktı (tek bayrak: BIMAS 2026-05-14 `jump_close`, ham kapanışın bedelsiz günü sıçraması, beklenen), ikinci çalıştırma 0 satır değiştirdi (idempotent), `open_adj` %100 dolu. 191 test yeşil, 3 ağ testi varsayılan olarak atlanır (`BIST_NETWORK_TESTS=1` ile çalışır). Alt ajan raporlarındaki iddialar (ham fiyat, evren, takvim) ana oturumda veriyle yeniden doğrulandı.
+- **Contabo doğrulaması (2026-11-08):** `postgres-ortak` içinde `bist_tahmin` DB, `bist_owner`/`bist_app` rolleri ve 4 migration kuruldu (`bist init`, ikinci çalıştırma değişiklik yapmadı). Konteynerden (`/opt/bist-tahmin`, `docker compose run --rm bist ...`, `ortak-db` ağı) `bist_app` ile bağlanıldı: DELETE, TRUNCATE, tahmin alanı UPDATE'i ve DROP engelli. `universe sync` ve `fetch --since 2025-11-08` sunucuda ~2 dakikada çalıştı; sonuç yerelle aynı (30 hisse × 250 gün, 250 takvim günü, 729 kurumsal işlem, `open_adj` %100, tek bayrak BIMAS). Yedek kapsamı `pg_dumpall` çıktısıyla doğrulandı (bist_tahmin DB, roller, `COPY public.prices`); ilk dosya dökümü 03:50'de beklenir. Diğer 11 veritabanına dokunulmadı. Cron henüz **kurulmadı** (günlük iş Faz 2'de).
 - Uygulama kararları:
   - Sıra: önce XU100 (takvim kaynağı), sonra hisseler; kalite kontrolü gerçek takvimi kullanır. Kapanış penceresinden (18:30 İstanbul) önceki bugünün yarım barı `prices`a da `trading_calendar`a da yazılmaz. Hata ("error") veren hisse yazılmaz ve `DISLANAN` olarak raporlanır; "flag"ler yazılır ve `BAYRAK` olarak raporlanır; hiçbir bar silinmez/düzeltilmez.
   - Evren üyeliği yarı açık aralıktır `[valid_from, valid_to)`; ilk senkronizasyonda 30 hissenin hepsi `valid_from = as_of` alır. **Geçmiş çeyreklik üyelikler uydurulmadı ve DB'de yok**; 2019–2026 değişiklikleri KAP'tan elle yüklenmeden geriye dönük backtest evreni güvenilir değildir (hayatta kalma yanlılığı). Bu, Faz 3.5'in önkoşuludur.
@@ -529,7 +530,8 @@ Durum tespiti 2026-11-08'de SSH ile yapıldı (yalnızca okuma). Dağıtımdan �
 - **Sunucu:** Ubuntu 24.04, 6 çekirdek, 11 GB RAM (~5,4 GB boş), Python 3.12, Docker 29, Compose 2.40, saat dilimi Europe/Berlin. Ana makinede Ollama (`127.0.0.1:11434`, `qwen3:4b`, `bge-m3`); konteynerden erişim için ayrıca ağ ayarı gerekir.
 - **Veritabanı:** `postgres-ortak` (PG 16.14, `mem_limit` 800 MB, 100 bağlantı), `ortak-db` Docker ağı, konteyner içi adres `postgres-ortak:5432`. Yeni `bist_tahmin` veritabanı ve iki rol açılır; rol parolaları sunucuda `.env` (600) içinde tutulur, repoya girmez.
 - **Yedek:** `postgres-ortak` için gece `pg_dumpall` (14 gün) ve 04:30 restic mevcut; yeni veritabanı otomatik kapsanır. Dağıtımda ilk yedeğin yeni veritabanını içerdiği doğrulanır.
-- **Konum:** `/opt/bist-tahmin/` (Compose, `.env`). Sürekli çalışan servis yok; cron `docker compose run --rm` ile tetikler.
+- **Konum:** `/opt/bist-tahmin/` (Compose, `.env` 600; kod `git archive` ile aktarıldı, sunucuda git deposu yok). Sürekli çalışan servis yok; cron `docker compose run --rm` ile tetikler. İmaj `bist-tahmin:latest` (1,13 GB, sunucuda `docker build`). **Güncelleme:** `git archive HEAD | ssh contabo 'tar -x -C /opt/bist-tahmin'` sonra `docker build -t bist-tahmin:latest .`; `.env` ezilmez.
+- **Kurulum durumu (2026-11-08):** `bist_tahmin` DB ve roller kuruldu, ilk veri yüklendi (Bölüm 15, Faz 1). Yönetici (`postgres`) parolası yalnızca `bist init` sırasında, geçici SSH tüneliyle (`127.0.0.1:5434`) kullanıldı; konteynerin `.env`'inde yoktur.
 - **Cron:** `CRON_TZ=Europe/Istanbul` ile günlük 19:00 (Ubuntu 24.04 cron'unda `CRON_TZ` desteği kurulumda doğrulanır; yoksa betik içinde İstanbul saati kontrol edilir) ve haftalık rapor. Çıktılar `logs/` ve `runs` tablosuna.
 - **Kaynak sınırları:** Konteynere CPU/RAM sınırı konur (`--cpus`, `mem_limit`), `nice` ile çalışır. Sunucu yükü ~3,5 / 6 çekirdek.
 - **Dikkat:** Sunucudaki diğer hizmetlere (nginx, diğer veritabanları, diğer konteynerler) dokunulmaz. Erişim sorunları (SSH zaman aşımı 2026-11-08) dağıtım öncesi kontrol edilir; art arda bağlantı denenmez.
@@ -558,6 +560,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v2.3 (2026-11-08):** Contabo kurulumu tamamlandı (DB, roller, imaj, ilk veri, yedek kapsamı). Faz 1 sunucuda da kapandı. Çıkarım: borsapy sunucudan ham/düzeltmeli fiyat ve `splits` ile çalışıyor.
 - **v2.2 (2026-11-08):** Faz 1 yerelde tamamlandı (üç paralel alt ajanla; sonuçlar ana oturumda doğrulandı). Ham fiyat doğrulandı, `open_adj` (migration 004) eklendi, kalite kapısı ve yarım bar elemesi `fetch`e bağlandı. Düzeltme: İş Yatırım "sunucudan açılmıyor" ifadesi daraltıldı (yalnızca ana sayfa; `splits` çalışıyor, bilanço uç noktaları denenmedi). Faz 3 saf istatistik çekirdeği ön çalışma olarak eklendi (faz açık).
 - **v2.1 (2026-11-08):** Faz 0 tamamlandı. Migration'lar `src/bist_tahmin/sql/` altına (pakete dahil), `bist_owner` NOLOGIN olarak tasarlandı (yalnızca `init` sırasında `SET ROLE` ile kullanılır, ayrı parola yok). Yerel test gömülü `pgserver` ile (Docker gerekmez). `db_name` doğrulaması ve `CONNECT` yetkisi yalnızca `bist_app`e verildi (paylaşımlı sunucudaki diğer kullanıcılar bağlanamaz).
 - **v2 (2026-11-08):**
