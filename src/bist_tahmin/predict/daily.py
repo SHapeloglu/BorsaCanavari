@@ -90,6 +90,13 @@ def run_daily(
     members = members_on(store.read_membership(conn), day.date())
     res = DailyResult(made_at=day.date(), dry_run=dry_run, universe=len(members))
     if not members:
+        rows_all = store.read_membership(conn)
+        if rows_all:
+            first = min(m.valid_from for m in rows_all)
+            raise ValueError(
+                f"{day.date()} tarihinde gecerli uye yok: uyelik kayitlari en erken {first} tarihinden basliyor "
+                "(gecmis uyelik uydurulmaz; defter bu tarihten sonraki ilk islem gunuyle baslar)"
+            )
         raise ValueError(f"{day.date()} icin evren bos; once `bist universe sync` calistirin")
 
     since = day - pd.Timedelta(days=lookback_days)

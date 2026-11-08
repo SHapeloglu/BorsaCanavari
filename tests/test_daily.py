@@ -352,3 +352,11 @@ def test_run_detail_is_checkpointed_before_a_later_step_fails(db):
         run_pipeline(conn, CFG, src, now=dt.datetime(2026, 10, 30, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
     status, detail = conn.execute("SELECT status, detail FROM runs WHERE job='daily' ORDER BY id DESC LIMIT 1").fetchone()
     assert status == "failed" and "universe" in detail and "fetch" in detail and "XU100" in detail["error"]
+
+
+def test_membership_starting_after_made_at_gives_a_clear_error(db):
+    conn, _ = db
+    store.apply_membership_changes(conn, [], [Membership(t, dt.date(2020, 1, 1), dt.date(2020, 1, 2)) for t in TICKERS])
+    store.apply_membership_changes(conn, [Membership(t, dt.date(2026, 11, 8), None) for t in TICKERS], [])
+    with pytest.raises(ValueError, match="gecerli uye yok.*2020-01-01"):
+        _run(conn, CFG)
