@@ -278,6 +278,69 @@ def _cmd_report_weekly(args: argparse.Namespace) -> int:
     return _run_report(args, roles=None)
 
 
+def _cmd_backtest_build_dataset(args: argparse.Namespace) -> int:
+    from .backtest.dataset import build_dataset, save_dataset
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    try:
+        cfg = load_config(args.config)
+        with conn:
+            ds = build_dataset(conn, cfg, start=args.start, end=args.end,
+                               progress=lambda i, n: print(f"  {i}/{n} gun", flush=True))
+        save_dataset(ds, args.out)
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    m = ds.meta
+    print(f"veri seti: {len(ds.frame)} satir, {ds.frame['date'].nunique()} gun, {ds.frame['ticker'].nunique()} hisse "
+          f"({m.get('date_min')} .. {m.get('date_max')}) -> {args.out}")
+    if m.get("skipped_tickers"):
+        print(f"fiyati olmayan uye (atlandi): {m['skipped_tickers']}")
+    return 0
+
+
+def _cmd_backtest_run(args: argparse.Namespace) -> int:
+    from .backtest import lab
+    from .backtest.dataset import load_dataset
+    from .backtest.guard import HoldoutLocked
+    from .backtest.runner import run_experiment
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        cfg = load_config(args.config)
+        ds = load_dataset(args.dataset)
+        features = args.features.split(",") if "," in args.features else args.features
+        spec = lab.ModelSpec(name=args.name, label=args.label, features=features, C=args.C, penalty=args.penalty,
+                             window=args.window, rolling_days=args.rolling_days)
+        if args.use_holdout:
+            print("UYARI: --use-holdout: dokunulmaz SINAMA KUMESI aciliyor. Bu yalnizca terfi asamasi icindir; kullanim "
+                  "deney kaydina yazilir ve geri alinamaz.", file=sys.stderr)
+        with conn:
+            run = run_experiment(conn, cfg, ds, spec, family=args.family, description=args.description or args.name,
+                                 use_holdout=args.use_holdout, dry_run=args.dry_run, alpha=args.alpha, seed=args.seed)
+    except HoldoutLocked as exc:
+        print(f"hata: sinama kumesi kilitli: {exc}", file=sys.stderr)
+        return 2
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    text = lab.format_result(run.result)
+    print(f"{prefix}deney #{run.experiment_id} aile={run.family} deneme_sayisi={run.n_trials} fold={run.n_folds}")
+    print(text)
+    if args.out:
+        from pathlib import Path
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text + "\n", encoding="utf-8")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bist", description="BIST 30 tahmin olcum laboratuvari")
     p.add_argument("--version", action="version", version=f"bist {__version__}")
@@ -338,6 +401,31 @@ def build_parser() -> argparse.ArgumentParser:
     weekly.add_argument("--as-of", default=None, help="YYYY-MM-DD (varsayilan: bugun, Istanbul)")
     weekly.add_argument("--dry-run", action="store_true", help="kabul edilir, etkisiz (rapor zaten yazmaz)")
     weekly.set_defaults(func=_cmd_report_weekly)
+
+    bt = sub.add_parser("backtest", help="backtest laboratuvari (Faz 3.5)")
+    bt_sub = bt.add_subparsers(dest="backtest_command", required=True)
+    bd = bt_sub.add_parser("build-dataset", help="tarihli uyelikle ozellik+etiket veri setini uret ve dosyaya yaz")
+    bd.add_argument("--out", default="data/dataset.pkl")
+    bd.add_argument("--start", default=None, help="YYYY-MM-DD")
+    bd.add_argument("--end", default=None, help="YYYY-MM-DD")
+    bd.set_defaults(func=_cmd_backtest_build_dataset)
+    br = bt_sub.add_parser("run", help="purge'lu walk-forward deneyi; her deneme experiments'a kaydedilir")
+    br.add_argument("--dataset", default="data/dataset.pkl")
+    br.add_argument("--name", required=True, help="model adi")
+    br.add_argument("--family", default="faz35", help="coklu deneme duzeltmesi ailesi (ayni ailedeki kayit sayisi n_trials)")
+    br.add_argument("--description", default=None)
+    br.add_argument("--label", default="label_up", choices=["label_up", "label_rel_up"])
+    br.add_argument("--features", default="all_z", help="grup (all, all_z, stock_z, stock_raw, market, calendar; a+b) ya da virgullu ad listesi")
+    br.add_argument("--C", type=float, default=1.0)
+    br.add_argument("--penalty", default="l2", choices=["l1", "l2"])
+    br.add_argument("--window", default="expanding", choices=["expanding", "rolling"])
+    br.add_argument("--rolling-days", type=int, default=None)
+    br.add_argument("--alpha", type=float, default=0.05)
+    br.add_argument("--seed", type=int, default=0)
+    br.add_argument("--out", default=None, help="sonucu markdown olarak dosyaya da yaz")
+    br.add_argument("--use-holdout", action="store_true", help="YALNIZCA terfi asamasi: dokunulmaz sinama kumesini ac (loglanir)")
+    br.add_argument("--dry-run", action="store_true", help="veritabanina yazma (deneme sayilmaz)")
+    br.set_defaults(func=_cmd_backtest_run)
     return p
 
 
