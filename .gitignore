@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dist/
+build/
+
+# Gizli degerler (asla commit edilmez)
+.env
+
+# Calisma verisi (yalnizca repo kokundeki klasorler; src/bist_tahmin/data/ paketi commit edilir)
+/data/
+/logs/
+
+# Bu repo ile ilgisiz, ayri bir projeye ait klasor
+/ISG/

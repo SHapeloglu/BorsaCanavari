@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bist-tahmin"
+version = "0.1.0"
+description = "BIST 30 yon tahmini olcum ve ogrenme laboratuvari (yatirim tavsiyesi degildir)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "borsapy>=0.11",
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "pyyaml",
+    "psycopg[binary]>=3.2",
+    "tzdata",
+    "holidays",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pgserver",   # yerelde Docker olmadan gomulu Postgres ile test
+]
+
+[project.scripts]
+bist = "bist_tahmin.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bist_tahmin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = ["network: gercek borsapy istegi yapar (BIST_NETWORK_TESTS=1 ile calisir)"]

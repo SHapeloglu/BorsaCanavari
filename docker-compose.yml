@@ -1,0 +1,18 @@
+# Uretim (Contabo): surekli calisan servis yok; host cron `docker compose run --rm bist <komut>` ile tetikler.
+# Yonetici baglantisi (DATABASE_ADMIN_URL) bu konteynere VERILMEZ; `bist init` elle, yonetici ortaminda calistirilir.
+services:
+  bist:
+    build: .
+    image: bist-tahmin:latest
+    env_file: .env
+    environment:
+      TZ: Europe/Istanbul
+    networks:
+      - ortak-db
+    mem_limit: 1g
+    cpus: 1.0
+    restart: "no"
+
+networks:
+  ortak-db:
+    external: true

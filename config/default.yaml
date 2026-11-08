@@ -1,0 +1,43 @@
+# Baslangic varsayimlaridir. Degistirilirse gerekce `experiments` tablosuna yazilir (PROJE.md Bolum 8).
+
+universe:
+  name: BIST30
+  source: borsapy_XU030     # bilesenler borsapy'den okunur, KAP ile capraz kontrol edilir
+  tickers: []               # calisma aninda doldurulur; tarihli uyelik DB'de tutulur
+
+timezone: Europe/Istanbul
+schedule:
+  daily_run_time: "19:00"   # kapanis seansi + 15 dk veri gecikmesi sonrasi; yeniden deneme var
+
+horizon_days: 5
+label_threshold: 0.0        # yon etiketi: getiri > threshold ise 1
+prob_clip: [0.01, 0.99]
+
+costs:
+  commission_bps: null      # GERCEK ORAN DOGRULANACAK; null iken rapor "maliyetsiz/tahmini" yazar
+  spread_bps: null
+  sensitivity_grid_bps: [0, 10, 20, 40]
+
+training:
+  min_train_days: 500
+  retrain_every_days: 20
+  purge_days: 5             # = horizon_days
+
+holdout:
+  holdout_start: "2026-05-01"   # dokunulmaz sinama kumesi baslangici
+
+terfi:
+  min_resolved_dates: 60          # farkli made_at gunu sayisi (tahmin sayisi degil)
+  min_improvement_brier: 0.005
+  bootstrap: {kind: block_by_date, resamples: 2000, block_days: 10, ci: 0.95}
+  multiple_testing: bonferroni
+  require_holdout_pass: true
+  require_live_shadow_days: 60
+  min_improvement_net_return: 0.0
+
+drift:
+  rolling_window: 60
+  brier_over_base_rate_alert: 0.01
+
+circuit_breaker:
+  max_relative_drawdown: 0.10
