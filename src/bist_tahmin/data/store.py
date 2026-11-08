@@ -155,3 +155,57 @@ def sync_universe(
     if not dry_run and (to_add or to_close):
         apply_membership_changes(conn, to_add, to_close, index_name)
     return to_add, to_close
+
+
+# --- Okuma (Faz 2: ozellikler, baseline'lar, cozucu ortak kullanir) --------------------------------------
+
+READ_COLUMNS = ["open", "high", "low", "close", "close_adj", "open_adj", "volume"]
+
+
+def read_calendar(conn: psycopg.Connection):
+    """`trading_calendar` tablosundan TradingCalendar (XU100 bar gunleri). Bos tablo ValueError verir."""
+    from ..calendar import TradingCalendar
+
+    days = [r[0] for r in conn.execute("SELECT date FROM trading_calendar ORDER BY date").fetchall()]
+    if not days:
+        raise ValueError("trading_calendar bos; once `bist fetch` calistirin")
+    return TradingCalendar(days)
+
+
+def read_prices(
+    conn: psycopg.Connection,
+    tickers: Iterable[str],
+    *,
+    until: dt.date | str | pd.Timestamp | None = None,
+    since: dt.date | str | pd.Timestamp | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Her ticker icin gunluk bar DataFrame'i: index = tz-naive `date` (DatetimeIndex), kolonlar READ_COLUMNS.
+
+    `until` DAHILDIR (made_at kapanisina kadar); sizinti kurali icin cagiran bunu mutlaka verir. Verisi olmayan
+    ticker sozlukte yer almaz. `close` ham, `close_adj` bolunme duzeltmeli, `open_adj = open*close_adj/close`.
+    """
+    tk = sorted({t.upper() for t in tickers})
+    if not tk:
+        return {}
+    where, params = ["ticker = ANY(%s)"], [tk]
+    if since is not None:
+        where.append("date >= %s")
+        params.append(pd.Timestamp(since).date())
+    if until is not None:
+        where.append("date <= %s")
+        params.append(pd.Timestamp(until).date())
+    cols = ", ".join(READ_COLUMNS)
+    cur = conn.execute(f"SELECT ticker, date, {cols} FROM prices WHERE {' AND '.join(where)} ORDER BY ticker, date",
+                       params)
+    rows = cur.fetchall()
+    if not rows:
+        return {}
+    df = pd.DataFrame(rows, columns=["ticker", "date", *READ_COLUMNS])
+    df["date"] = pd.to_datetime(df["date"])
+    for c in READ_COLUMNS:
+        df[c] = pd.to_numeric(df[c], errors="coerce").astype("float64")
+    out: dict[str, pd.DataFrame] = {}
+    for t, g in df.groupby("ticker", sort=True):
+        out[t] = g.drop(columns="ticker").set_index("date").sort_index()
+        out[t].index.name = "date"
+    return out

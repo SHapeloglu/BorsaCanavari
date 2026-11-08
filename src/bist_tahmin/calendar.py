@@ -195,3 +195,36 @@ def half_day_candidates(days: Iterable, years: Iterable[int] | None = None) -> l
         if ts.year in yrs and ts.weekday() < 5 and prev not in hol and ts in present:
             out.append(ts)
     return out
+
+
+def expected_last_bar_date(now=None, *, close_cutoff: dt.time = dt.time(18, 30), tz: str = "Europe/Istanbul") -> dt.date:
+    """Su an itibariyla XU100'de BULUNMASI GEREKEN son bar gunu (bayat veri tespiti icin).
+
+    Kapanis penceresinden (varsayilan 18:30 Istanbul) once bugun sayilmaz; hafta sonu ve resmi tatil geriye
+    atlanir (`holidays` TR). Arife yarim gunleri bar uretir, atlanmaz. Takvimin KENDISI XU100 barlarindan
+    geldigi icin bu fonksiyon bagimsiz bir ikinci kaynaktir.
+    """
+    from zoneinfo import ZoneInfo
+
+    local = pd.Timestamp.now(tz=ZoneInfo(tz)) if now is None else pd.Timestamp(now)
+    local = local.tz_localize(ZoneInfo(tz)) if local.tzinfo is None else local.tz_convert(ZoneInfo(tz))
+    day = local.date() if local.time() >= close_cutoff else local.date() - dt.timedelta(days=1)
+    hol = _tr_holidays(range(day.year - 1, day.year + 1))
+    while day.weekday() >= 5 or day in hol:
+        day -= dt.timedelta(days=1)
+    return day
+
+
+def next_session_open(day, *, open_time: dt.time = dt.time(10, 0), tz: str = "Europe/Istanbul") -> pd.Timestamp:
+    """`day`den SONRAKI ilk seansin acilis ani (tz-aware). Hafta sonu ve resmi tatiller atlanir (`holidays` TR).
+
+    Tahmin defteri icin yazim son tarihi: `made_at` gununun tahmini, ertesi seans acilmadan yazilmis olmali
+    (`tradable_ret` ertesi acilis girisini varsayar). Takvimin kendisi gelecegi bilmedigi icin `holidays` kullanilir.
+    """
+    from zoneinfo import ZoneInfo
+
+    d = pd.Timestamp(day).date() + dt.timedelta(days=1)
+    hol = _tr_holidays(range(d.year, d.year + 2))
+    while d.weekday() >= 5 or d in hol:
+        d += dt.timedelta(days=1)
+    return pd.Timestamp(dt.datetime.combine(d, open_time)).tz_localize(ZoneInfo(tz))

@@ -245,7 +245,7 @@ bist-tahmin/
 │   ├── __init__.py
 │   ├── config.py             # yaml okuma, doğrulama
 │   ├── db.py                 # roller, veritabanı, migration (init); advisory lock (Faz 2)
-│   ├── sql/                  # migration dosyaları: 001_schema, 002_guard, 003_grants, 004_open_adj (pakete dahil)
+│   ├── sql/                  # migration dosyaları: 001_schema, 002_guard, 003_grants, 004_open_adj, 005_ledger_hardening (pakete dahil)
 │   ├── calendar.py           # işlem günü takvimi, ufuk sayımı
 │   ├── data/
 │   │   ├── source.py         # veri kaynağı soyutlaması (borsapy/yfinance)
@@ -426,8 +426,9 @@ Test çalıştırma: `pytest -q` (yerelde geçici Postgres konteyneri ile). Bu t
 bist init                      # db oluştur, şema/rol/tetikleyici yükle
 bist fetch --since 2024-01-01 [--tickers A,B]  # fiyat indir ve kalite kontrolü (DATABASE_URL = bist_app)
 bist universe sync [--as-of D] # XU030 bileşenlerini al, tarihli üyeliği güncelle
-bist predict daily             # bugünün tahminlerini üret ve kaydet
-bist resolve                   # vadesi gelenleri çöz
+bist predict daily [--dry-run] # takvimin son günü için baseline tahminlerini yaz (geçmişe yazmak yasak; --allow-backfill yalnız geliştirme)
+bist resolve                   # vadesi gelenleri çöz (vadesi geçmiş ama çözülemeyenleri sayar)
+bist run-daily                 # günlük akış: evren -> indir+kalite -> çöz -> tahmin (cron; çıkış 0/1/3/4)
 bist baseline report           # baseline performansı
 bist backtest run              # tarihsel walk-forward deney (sınama kümesi kilitli)
 bist models train              # challenger eğit
@@ -461,16 +462,27 @@ Her faz, kabul kriterleri sağlanmadan kapatılmaz.
   - `bist fetch` tam 1 yıl için ~5 dakika sürer (istekler arası bekleme); günlük çalıştırmada yalnızca son birkaç hafta çekilir.
   - Bilinen küçük eksik: kalite kontrolü, bilinen bir bölünme gününe denk gelen ham `jump_close` bayrağını "beklenen" diye ayırmıyor (gürültü, engelleyici değil).
 
-**Faz 2: Tahmin defteri ve çözücü (ML yok)**
+**Faz 2: Tahmin defteri ve çözücü (ML yok)** — *yerelde TAMAMLANDI (2026-11-08); sunucu dağıtımı ve cron bekliyor*
 - Özellik üretimi, baseline'lar, `predict daily`, `resolve`
 - Sızıntı, purge ve append-only testleri geçiyor
 - Kabul: Günlük cron/manuel çalıştırmada tahminler yazılıyor, vadesi gelenler çözülüyor, tekrar çalıştırma çift kayıt üretmiyor (idempotent)
+- Doğrulama: 424 test yeşil (gömülü Postgres). **Gerçek veriyle** (30 hisse, `fetch --since 2025-01-01`, 3 gün için geliştirme amaçlı geçmişe yazım): 450 tahmin yazıldı ve **450'si çözüldü, 0 atlandı**. BIMAS 2026-05-08 → 05-15 (14 Mayıs %100 bedelsiz dahil): ham kapanış 790→405,25, çözücü **+%2,59** yazdı (sahte −%49 değil); |getiri| > %35 olan satır yok.
+- Modüller: `features/build.py` (34 özellik, `FEATURE_VERSION=f1`, kanonik JSON + sha256, `assert_no_lookahead` dedektörü), `baselines/rules.py` (5 baseline, `baseline_<ad>_v1`), `predict/ledger.py` (idempotent yazıcı), `predict/daily.py`, `resolve/resolver.py`, `jobs.py` (advisory lock + `runs`), `pipeline.py`.
+- Bağımsız kod incelemesi (ayrı bir ajan, salt okunur) 9 bulgu getirdi; hepsi ele alındı veya kayda geçti:
+  - **Kritik:** bedelsiz hem kaynakta hem `corporate_actions`'ta yoksa iki yol da aynı sahte düşüşü gösterip yanlış getiriyi **kalıcı** yazıyordu → çözücü artık made_at–vade arasında günlük `|close_adj getirisi| > 0,15` (`MAX_DAILY_MOVE`; BIST limiti ~%10) görürse `unexplained_jump` ile **yazmıyor** (şüphede yazma; veri düzelince aynı satır çözülür).
+  - **Gecikmiş yazım:** yeni tahmin, `made_at`'i izleyen seansın 10:00'ından (İstanbul; hafta sonu/tatil atlanır) sonra yazılamaz (`LateWrite`). Zaten yazılmış satırların tekrarı bu kurala takılmaz. Pipeline bu durumda çıkış 3 verir.
+  - **DB sertleştirme (migration 005):** `recorded_at` tetikleyiciyle DB saatine kilitli (uygulama sahteleyemez; geç yazım `recorded_at − made_at` ile denetlenebilir); ileri tarihli `made_at` reddedilir; çözümde 6 alanın hepsi zorunlu; vade gelmeden (`resolved_at < made_at + horizon_days` takvim günü) çözüm reddedilir.
+  - **Sessiz kapsam kaybı:** kapsam < %80, atlanan baseline, `adjustment_mismatch`/`unexplained_jump`/`stale_ticker`, vadesi ≥3 işlem günü geçmiş ama çözülmemiş tahmin (`count_overdue`) ve XU100 takvim deliği şüphesi artık çıkış kodunu 1 yapar ve `runs.detail`'e yazılır. `stale_ticker`: hissenin barları durmuşsa sonsuza dek "not_due" denmez.
+  - **İş takibi:** her adım `runs.detail`'e hemen yazılır (iş sonradan patlasa bile görünür); bayat veri `skipped`; kilit alınamazsa `skipped` satırı + çıkış 4; `connect_timeout=15`.
+  - **Evren senkronu** günlük akışa girdi (kaynak <25 bileşen verirse uygulanmaz, uyarı).
+  - Bilinen sınır: `XU100` takvim deliği (kaynak bir günü eksik verirse ufuk 1 gün kayar) yalnızca şüpheyle (≥3 hissede "XU100'de olmayan günde bar") işaretlenir, otomatik düzeltilmez. Çözücü eşiği 0,15 gerçek BIST verisinde taranmadı; işlem durdurma sonrası meşru büyük hareketler satırı `unexplained_jump` olarak bekletebilir (bilinçli).
 
-**Faz 3: Değerlendirme ve baseline raporu** — *ön çalışma yapıldı, faz AÇIK*
+**Faz 3: Değerlendirme ve baseline raporu** — *kod tamam, faz AÇIK: gerçek canlı veriyle ilk rapor bekliyor*
 - Metrikler, IC, blok bootstrap, kohort simülasyonu, maliyet ızgarası, kalibrasyon, haftalık rapor
 - Kabul: Baseline sonuçları rapor olarak üretiliyor; metrikler ve bootstrap test edilmiş
 - Hazır (veriden bağımsız saf çekirdek, `evaluate/metrics.py` ve `evaluate/bootstrap.py`, testli): Brier, log loss (kırpılmış), kalibrasyon, günlük Spearman IC ve Newey-West t (varsayılan gecikme `horizon_days − 1`, Bartlett ağırlıkları), tarihe göre dairesel blok bootstrap, eşleştirilmiş fark CI, iid karşılaştırması, Bonferroni, etkin örneklem büyüklüğü. Sentetik günlük-korelasyonlu veride blok CI, iid CI'dan ~3,5 kat geniş çıktı.
-- Henüz yok: kohort portföy simülasyonu, maliyet ızgarası, baseline'lar ve rapor (Faz 2 verisi gerekir). Newey-West t, harici bir kütüphaneyle (statsmodels) çapraz doğrulanmadı.
+- Eklendi (2026-11-08): `evaluate/portfolio.py` (kohort portföyü: günlük skor sırasına göre ilk %20, eşit skorlar dahil → "hep yükseliş" = benchmark; maliyet = 2×bps; benchmark maliyetsiz; yalnız uzun; `equity_curve`, `max_drawdown`, `relative_drawdown`), `evaluate/costs.py` (maliyet duyarlılığı), `evaluate/report.py` + `report_portfolio.py` (model başına Brier, baz-orana karşı eşleştirilmiş blok bootstrap farkı, IC, kalibrasyon, **örnek ve farklı gün sayısı**, etkin örneklem uyarısı, maliyet etiketi "DOĞRULANMADI: tahmini/maliyetsiz", yatırım tavsiyesi değildir notu), CLI `bist baseline report` ve `bist report weekly [--out]`.
+- Sınırlar: `equity_curve` günlük mark-to-market içermez (kohort getirisi made_at adımına yazılır, gerçekte vadede gerçekleşir); drawdown **alt sınır** sayılmalıdır. Kabul için henüz gerçek canlı defter yok (birikim ~3 ay). Newey-West t, harici bir kütüphaneyle (statsmodels) çapraz doğrulanmadı.
 
 **Faz 3.5: Backtest laboratuvarı**
 - Purge'lu tarihsel walk-forward, sınama kümesi kilidi, `experiments` kaydı ve çoklu deneme düzeltmesi
@@ -518,7 +530,7 @@ Bu sorular cevaplanana kadar ilgili değerler varsayılan olarak bırakılır ve
 - **Piyasa rejimi değişimi:** Faiz kararları, kur şokları ve seçim dönemleri modeli hızla bozabilir. Drift izleme yakalamaya çalışır ama garanti vermez.
 - **Veri sağlayıcı değişikliği:** borsapy veya TradingView erişimi değişebilir. Veri kaynağı soyutlama katmanı arkasında tutulur. TradingView WebSocket erişimi resmi bir ürün değildir.
 - **Deneme şişmesi:** Backtest laboratuvarı çok deneme üretir. Sınama kümesi, çoklu deneme düzeltmesi ve canlı gölge çalıştırma bunun içindir.
-- **Paylaşımlı altyapı:** `postgres-ortak` 11 veritabanına hizmet eder. Bu projenin yükü çok küçük olsa da `statement_timeout` ve bağlantı sınırı konur.
+- **Paylaşımlı altyapı:** `postgres-ortak` 12 veritabanına hizmet eder. Bu projenin yükü çok küçük olsa da `statement_timeout` ve bağlantı sınırı konur.
 - **Disk:** Sunucu diskinin %88'i dolu (2026-11-08). Proje veri hacmi küçüktür; yine de disk durumu izlenir.
 - **Lisans:** borsapy kullanım koşulları veriyi ticari amaçla kullanmayı yasaklar; Borsa İstanbul veri dağıtımını lisansa bağlar. Bu proje kişisel ve eğitim amaçlıdır.
 - **Kullanıcı yanılgısı:** Sistemin "tahmin ettiği" izlenimi yaratılabilir. Raporlar her zaman belirsizliği, örneklem sayısını ve farklı gün sayısını gösterir.
@@ -560,6 +572,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v2.4 (2026-11-08):** Faz 2 yerelde tamamlandı (özellikler, baseline'lar, defter yazıcısı, çözücü, pipeline), Faz 3 kodu eklendi (portföy, maliyet, rapor). Bağımsız kod incelemesi bulgularıyla migration 005, çözücüde `unexplained_jump`/`stale_ticker`, yazım penceresi (`LateWrite`), çıkış kodları ve `runs` kaydı sertleştirildi. Çalışma yöntemi: işler dosya sahipliği ayrık alt ajanlara bölündü; sonuçlar ana oturumda yeniden doğrulandı.
 - **v2.3 (2026-11-08):** Contabo kurulumu tamamlandı (DB, roller, imaj, ilk veri, yedek kapsamı). Faz 1 sunucuda da kapandı. Çıkarım: borsapy sunucudan ham/düzeltmeli fiyat ve `splits` ile çalışıyor.
 - **v2.2 (2026-11-08):** Faz 1 yerelde tamamlandı (üç paralel alt ajanla; sonuçlar ana oturumda doğrulandı). Ham fiyat doğrulandı, `open_adj` (migration 004) eklendi, kalite kapısı ve yarım bar elemesi `fetch`e bağlandı. Düzeltme: İş Yatırım "sunucudan açılmıyor" ifadesi daraltıldı (yalnızca ana sayfa; `splits` çalışıyor, bilanço uç noktaları denenmedi). Faz 3 saf istatistik çekirdeği ön çalışma olarak eklendi (faz açık).
 - **v2.1 (2026-11-08):** Faz 0 tamamlandı. Migration'lar `src/bist_tahmin/sql/` altına (pakete dahil), `bist_owner` NOLOGIN olarak tasarlandı (yalnızca `init` sırasında `SET ROLE` ile kullanılır, ayrı parola yok). Yerel test gömülü `pgserver` ile (Docker gerekmez). `db_name` doğrulaması ve `CONNECT` yetkisi yalnızca `bist_app`e verildi (paylaşımlı sunucudaki diğer kullanıcılar bağlanamaz).

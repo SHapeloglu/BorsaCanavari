@@ -1,4 +1,4 @@
-"""Komut satiri girisi (PROJE.md Bolum 14): init, fetch, universe sync."""
+"""Komut satiri girisi (PROJE.md Bolum 14): init, fetch, universe sync, predict daily, resolve, run-daily."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def _app_conn_or_none():
     url = os.environ.get("DATABASE_URL")
     if not url:
         return None
-    return psycopg.connect(url, autocommit=True)
+    return psycopg.connect(url, autocommit=True, connect_timeout=15)
 
 
 def _need_db_message() -> None:
@@ -122,6 +122,142 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
     return 0 if res.ok else 1
 
 
+def _cmd_predict_daily(args: argparse.Namespace) -> int:
+    from .jobs import JobLocked, tracked_job
+    from .predict.daily import run_daily
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        cfg = load_config(args.config)
+        with conn, tracked_job(conn, "predict", _today_istanbul(), record=not args.dry_run) as run:
+            res = run_daily(conn, cfg, made_at=args.made_at, dry_run=args.dry_run,
+                            allow_backfill=args.allow_backfill)
+            run.detail.update({"made_at": str(res.made_at), "inserted": res.inserted,
+                               "skipped_existing": res.skipped_existing, "evaluated": len(res.evaluated)})
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ConfigError, ValueError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    for line in res.summary_lines():
+        print(f"{prefix}{line}")
+    return 0
+
+
+def _cmd_resolve(args: argparse.Namespace) -> int:
+    from .data import store
+    from .jobs import JobLocked, tracked_job
+    from .resolve.resolver import count_overdue, resolve_due
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        cfg = load_config(args.config)
+        with conn, tracked_job(conn, "resolve", _today_istanbul(), record=not args.dry_run) as run:
+            cal = store.read_calendar(conn)
+            res = resolve_due(conn, cal, label_threshold=float(cfg["label_threshold"]), dry_run=args.dry_run)
+            overdue = count_overdue(conn, cal)
+            run.detail.update({"resolved": res.resolved, "skipped": dict(res.skipped), "details": res.details[:20],
+                               "overdue": overdue})
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ConfigError, ValueError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    print(f"{prefix}cozulen: {res.resolved}; atlanan: {dict(res.skipped) or '-'}")
+    if overdue["overdue"]:
+        print(f"{prefix}UYARI: vadesi gecmis ama COZULMEMIS {overdue['overdue']} tahmin "
+              f"(en eski made_at {overdue['oldest_made_at']}; hisseler {overdue['tickers'][:8]})")
+    for line in res.details[:20]:
+        print(f"{prefix}  {line}")
+    return 0
+
+
+def _cmd_run_daily(args: argparse.Namespace) -> int:
+    from .jobs import JobLocked
+    from .pipeline import run_pipeline
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        cfg = load_config(args.config)
+        with conn:
+            res = run_pipeline(conn, cfg, _make_source(), dry_run=args.dry_run)
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ConfigError, ValueError, RuntimeError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    for line in res.lines:
+        print(f"{prefix}{line}")
+    print(DISCLAIMER)
+    return res.exit_code
+
+
+def _emit_markdown(text: str, out: str | None) -> None:
+    """Markdown'i stdout'a basar; --out verilirse dosyaya da yazar (ust dizin yoksa olusturulur)."""
+    try:
+        sys.stdout.write(text)
+    except UnicodeEncodeError:   # C locale / ASCII terminal: ham UTF-8 bayt yaz
+        sys.stdout.flush()
+        sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.flush()
+    if out:
+        from pathlib import Path
+
+        path = Path(out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        print(f"rapor yazildi: {path}", file=sys.stderr)
+
+
+def _run_report(args: argparse.Namespace, *, roles: list[str] | None) -> int:
+    """Salt-okunur rapor; veritabanina yazmaz (--dry-run etkisizdir)."""
+    import psycopg
+
+    from .evaluate.report import build_report
+    from .evaluate.report_portfolio import cohort_portfolio_section
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    try:
+        as_of = dt.date.fromisoformat(args.as_of) if getattr(args, "as_of", None) else None
+        cfg = load_config(args.config)
+        with conn:
+            report = build_report(conn, cfg, as_of=as_of, roles=roles, portfolio_fn=cohort_portfolio_section)
+        _emit_markdown(report.text, getattr(args, "out", None))
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cmd_baseline_report(args: argparse.Namespace) -> int:
+    return _run_report(args, roles=["baseline"])
+
+
+def _cmd_report_weekly(args: argparse.Namespace) -> int:
+    return _run_report(args, roles=None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bist", description="BIST 30 tahmin olcum laboratuvari")
     p.add_argument("--version", action="version", version=f"bist {__version__}")
@@ -145,6 +281,39 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--as-of", default=None, help="uyelik tarihi YYYY-MM-DD (varsayilan: bugun, Istanbul)")
     sync.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
     sync.set_defaults(func=_cmd_universe_sync)
+
+    pred = sub.add_parser("predict", help="tahmin uretimi")
+    pred_sub = pred.add_subparsers(dest="predict_command", required=True)
+    daily = pred_sub.add_parser("daily", help="bugunun (takvimin son gunu) baseline tahminlerini yaz")
+    daily.add_argument("--made-at", default=None, help="YYYY-MM-DD (varsayilan: takvimin son gunu)")
+    daily.add_argument("--allow-backfill", action="store_true",
+                       help="YALNIZCA gelistirme: gecmis gune tahmin yaz (uretim defterinde kullanilmaz)")
+    daily.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
+    daily.set_defaults(func=_cmd_predict_daily)
+
+    resolve = sub.add_parser("resolve", help="vadesi gelen tahminleri coz")
+    resolve.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
+    resolve.set_defaults(func=_cmd_resolve)
+
+    rd = sub.add_parser("run-daily", help="gunluk akis: indir -> coz -> tahmin (cron icin; cikis 3 = bayat veri)")
+    rd.add_argument("--dry-run", action="store_true", help="veritabanina yazmadan goster")
+    rd.set_defaults(func=_cmd_run_daily)
+
+    base = sub.add_parser("baseline", help="baseline islemleri")
+    base_sub = base.add_subparsers(dest="baseline_command", required=True)
+    brep = base_sub.add_parser("report", help="baseline performans raporu (yalnizca model_role='baseline'; salt-okunur)")
+    brep.add_argument("--as-of", default=None, help="YYYY-MM-DD (varsayilan: bugun, Istanbul)")
+    brep.add_argument("--out", default=None, help="markdown'i ayrica bu dosyaya yaz (varsayilan: yok)")
+    brep.add_argument("--dry-run", action="store_true", help="kabul edilir, etkisiz (rapor zaten yazmaz)")
+    brep.set_defaults(func=_cmd_baseline_report)
+
+    rep = sub.add_parser("report", help="rapor uretimi")
+    rep_sub = rep.add_subparsers(dest="report_command", required=True)
+    weekly = rep_sub.add_parser("weekly", help="haftalik rapor (tum roller; salt-okunur)")
+    weekly.add_argument("--out", default=None, help="markdown'i ayrica bu dosyaya yaz (varsayilan: yok)")
+    weekly.add_argument("--as-of", default=None, help="YYYY-MM-DD (varsayilan: bugun, Istanbul)")
+    weekly.add_argument("--dry-run", action="store_true", help="kabul edilir, etkisiz (rapor zaten yazmaz)")
+    weekly.set_defaults(func=_cmd_report_weekly)
     return p
 
 

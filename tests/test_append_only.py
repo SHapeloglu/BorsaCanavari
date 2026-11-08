@@ -9,9 +9,11 @@ from psycopg import errors
 
 
 def _resolve(conn, pid, resolved_at="2026-11-09", ret=0.02, label=1):
+    """Alti cozum alaninin hepsini yazar (005: kismi cozum yok). new_prediction: made_at 2026-11-02, H=5."""
     return conn.execute(
-        "UPDATE predictions SET resolved_at=%s, realized_ret=%s, label_up=%s WHERE id=%s",
-        (resolved_at, ret, label, pid),
+        "UPDATE predictions SET resolved_at=%s, realized_ret=%s, realized_rel_ret=%s, tradable_ret=%s,"
+        " label_up=%s, label_rel_up=%s WHERE id=%s",
+        (resolved_at, ret, ret / 2, ret / 3, label, label, pid),
     )
 
 
@@ -85,6 +87,33 @@ def test_resolution_requires_complete_fields_and_later_date(app_conn, new_predic
         _resolve(app_conn, pid, resolved_at="2026-10-30")
 
 
+_SIX_FIELDS = ["resolved_at", "realized_ret", "realized_rel_ret", "tradable_ret", "label_up", "label_rel_up"]
+_SIX_VALUES = {"resolved_at": "'2026-11-09'", "realized_ret": "0.02", "realized_rel_ret": "0.01",
+               "tradable_ret": "0.005", "label_up": "1", "label_rel_up": "1"}
+
+
+@pytest.mark.parametrize("missing", _SIX_FIELDS)
+def test_resolution_requires_all_six_fields(app_conn, new_prediction, insert_prediction, missing):
+    pid = insert_prediction(app_conn, new_prediction())
+    sets = ", ".join(f"{c}={v}" for c, v in _SIX_VALUES.items() if c != missing)
+    with pytest.raises((errors.RestrictViolation, errors.CheckViolation)):
+        app_conn.execute(f"UPDATE predictions SET {sets} WHERE id = %s", (pid,))
+    # reddedilen yazim hicbir sey birakmaz; tam cozum hala yazilabilir
+    assert app_conn.execute("SELECT resolved_at FROM predictions WHERE id=%s", (pid,)).fetchone()[0] is None
+    _resolve(app_conn, pid)
+
+
+def test_early_resolution_rejected_but_due_accepted(app_conn, new_prediction, insert_prediction):
+    pid = insert_prediction(app_conn, new_prediction())  # made_at 2026-11-02, H=5 -> en erken 2026-11-07
+    with pytest.raises(errors.RestrictViolation):
+        _resolve(app_conn, pid, resolved_at="2026-11-03")
+    with pytest.raises(errors.RestrictViolation):
+        _resolve(app_conn, pid, resolved_at="2026-11-06")
+    assert app_conn.execute("SELECT resolved_at FROM predictions WHERE id=%s", (pid,)).fetchone()[0] is None
+    _resolve(app_conn, pid, resolved_at="2026-11-07")  # tam made_at + H takvim gunu: kabul
+    assert str(app_conn.execute("SELECT resolved_at FROM predictions WHERE id=%s", (pid,)).fetchone()[0]) == "2026-11-07"
+
+
 def test_insert_cannot_carry_resolution(app_conn, new_prediction):
     row = new_prediction()
     with pytest.raises((errors.RestrictViolation, errors.CheckViolation)):
@@ -119,3 +148,60 @@ def test_app_role_has_safety_limits(bist_db):
         cfg = conn.execute("SELECT rolconfig, rolconnlimit FROM pg_roles WHERE rolname='bist_app'").fetchone()
     assert any(c.startswith("statement_timeout=") for c in cfg[0])
     assert cfg[1] == 5
+
+
+# --- 005: guvenilir kayit zamani ve ileri tarih yasagi ---------------------------------------
+
+def _raw_insert(conn, ticker, made_at, extra_cols="", extra_vals=""):
+    return conn.execute(
+        "INSERT INTO predictions (ticker, made_at, horizon_days, prob_up, model_version, model_role,"
+        f" feature_hash, features_json, created_at{extra_cols})"
+        f" VALUES (%s,%s,5,0.5,'m','baseline','h','{{}}'::jsonb,'2020-01-02 19:00+03'{extra_vals}) RETURNING id",
+        (ticker, made_at),
+    ).fetchone()[0]
+
+
+def test_recorded_at_is_db_clock_and_cannot_be_forged(app_conn, new_prediction):
+    import datetime as dt
+    ticker = new_prediction()["ticker"]
+    before = dt.datetime.now(dt.timezone.utc)
+    pid = _raw_insert(app_conn, ticker, "2026-11-02", ", recorded_at", ",'2020-01-02 19:00+03'")
+    after = dt.datetime.now(dt.timezone.utc)
+    rec, created = app_conn.execute("SELECT recorded_at, created_at FROM predictions WHERE id=%s", (pid,)).fetchone()
+    assert before - dt.timedelta(seconds=5) <= rec <= after + dt.timedelta(seconds=5)   # gonderilen 2020 degeri degil
+    assert created.year == 2020                                                          # created_at serbest kalir
+
+
+def test_recorded_at_defaults_without_being_sent(app_conn, new_prediction, insert_prediction):
+    pid = insert_prediction(app_conn, new_prediction())
+    assert app_conn.execute("SELECT recorded_at IS NOT NULL FROM predictions WHERE id=%s", (pid,)).fetchone()[0]
+
+
+def test_future_made_at_rejected(app_conn, new_prediction):
+    ticker = new_prediction()["ticker"]
+    with pytest.raises(errors.RestrictViolation):
+        _raw_insert(app_conn, ticker, "2999-01-01")
+    assert app_conn.execute("SELECT count(*) FROM predictions WHERE ticker=%s", (ticker,)).fetchone()[0] == 0
+    # bugunun (Istanbul) tarihi serbesttir
+    today = app_conn.execute("SELECT (now() AT TIME ZONE 'Europe/Istanbul')::date").fetchone()[0]
+    assert _raw_insert(app_conn, ticker, today) is not None
+
+
+def test_recorded_at_is_immutable(app_conn, owner_conn, new_prediction, insert_prediction):
+    pid = insert_prediction(app_conn, new_prediction())
+    with pytest.raises(errors.InsufficientPrivilege):
+        app_conn.execute("UPDATE predictions SET recorded_at = '2020-01-01' WHERE id = %s", (pid,))
+    with pytest.raises(errors.RestrictViolation):  # tablo sahibi bile degistiremez
+        owner_conn.execute("UPDATE predictions SET recorded_at = '2020-01-01' WHERE id = %s", (pid,))
+
+
+def test_migration_005_applied_once_and_idempotent(bist_db):
+    from bist_tahmin.db import plan_init, run_init, with_overrides
+    admin, name = bist_db
+    assert plan_init(admin, name).is_noop
+    assert run_init(admin, db_name=name).is_noop
+    with psycopg.connect(with_overrides(admin, dbname=name), autocommit=True) as conn:
+        n = conn.execute("SELECT count(*) FROM schema_migrations WHERE version='005_ledger_hardening.sql'").fetchone()[0]
+        col = conn.execute("SELECT is_nullable, column_default FROM information_schema.columns"
+                           " WHERE table_name='predictions' AND column_name='recorded_at'").fetchone()
+    assert n == 1 and col[0] == "NO" and "clock_timestamp" in col[1]
