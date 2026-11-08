@@ -1,0 +1,531 @@
+{
+ "range": "2024-07-01..2026-12-31",
+ "periods": [
+  {
+   "start": "2024-07-01",
+   "end": "2024-09-30",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "BRSAN",
+    "DOAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "OYAKC",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "DOAS"
+   ],
+   "removed": [
+    "ODAS"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14682/2024-yili-ucuncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 13.06.2024; reserve: MIATK, TTKOM, MGROS. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu donemde Koza Altin kodu KOZAL (24.11.2025'ten once; sonra TRALT)."
+  },
+  {
+   "start": "2024-10-01",
+   "end": "2024-12-31",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DOAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "MGROS",
+    "TTKOM",
+    "ULKER"
+   ],
+   "removed": [
+    "BRSAN",
+    "GUBRF",
+    "OYAKC"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14707/2024-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 20.09.2024; reserve: MIATK, AEFES, TAVHL. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu donemde Koza Altin kodu KOZAL (24.11.2025'ten once; sonra TRALT)."
+  },
+  {
+   "start": "2025-01-01",
+   "end": "2025-03-31",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ALARK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "AEFES"
+   ],
+   "removed": [
+    "DOAS"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/13287/2025-yili-birinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 20.12.2024; reserve: TAVHL, CCOLA, MIATK. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu donemde Koza Altin kodu KOZAL (24.11.2025'ten once; sonra TRALT)."
+  },
+  {
+   "start": "2025-04-01",
+   "end": "2025-06-30",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "CIMSA",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "CIMSA",
+    "TAVHL"
+   ],
+   "removed": [
+    "ALARK",
+    "KONTR"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14784/2025-yili-ikinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 21.03.2025; reserve: GUBRF, OYAKC, CCOLA. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu donemde Koza Altin kodu KOZAL (24.11.2025'ten once; sonra TRALT)."
+  },
+  {
+   "start": "2025-07-01",
+   "end": "2025-09-30",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "CIMSA",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KOZAL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "GUBRF"
+   ],
+   "removed": [
+    "HEKTS"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15121/2025-yili-ucuncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 20.06.2025; reserve: OYAKC, DOAS, VAKBN. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu donemde Koza Altin kodu KOZAL (24.11.2025'ten once; sonra TRALT)."
+  },
+  {
+   "start": "2025-10-01",
+   "end": "2025-11-23",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DSTKF",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KOZAL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "DSTKF"
+   ],
+   "removed": [
+    "CIMSA"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15220/2025-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.cnbce.com/borsa/borsa-istanbulda-uc-sirketin-islem-kodlari-degisiyor-h19641"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 12.09.2025; reserve: OYAKC, CIMSA, VAKBN. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. Bu alt-donemde Koza Altin kodu KOZAL (24.11.2025'ten once)."
+  },
+  {
+   "start": "2025-11-24",
+   "end": "2025-12-31",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DSTKF",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TRALT",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [
+    "TRALT"
+   ],
+   "removed": [
+    "KOZAL"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15220/2025-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.cnbce.com/borsa/borsa-istanbulda-uc-sirketin-islem-kodlari-degisiyor-h19641"
+   ],
+   "confidence": "high",
+   "notes": "Donem ici KOD DEGISIKLIGI (uyelik degisikligi degil): KOZAL -> TRALT (Koza Altin Isletmeleri -> Turk Altin Isletmeleri), 24.11.2025 itibariyla (Borsa Istanbul duyurusu 12-13.11.2025). Ayni gun KOZAA->TRMET, IPEKE->TRENJ. Uyeler bu alt-donemde 1. alt-donemle ayni (DSTKF dahil, CIMSA haric)."
+  },
+  {
+   "start": "2026-01-01",
+   "end": "2026-03-31",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DSTKF",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TRALT",
+    "TTKOM",
+    "TUPRS",
+    "ULKER",
+    "YKBNK"
+   ],
+   "added": [],
+   "removed": [],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15293/2026-yili-birinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 19.12.2025; BIST 30'da degisiklik yok ('--'); reserve: OYAKC, VAKBN, CIMSA. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti."
+  },
+  {
+   "start": "2026-04-01",
+   "end": "2026-06-30",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DSTKF",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TRALT",
+    "TTKOM",
+    "TUPRS",
+    "VAKBN",
+    "YKBNK"
+   ],
+   "added": [
+    "VAKBN"
+   ],
+   "removed": [
+    "ULKER"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15392/2026-yili-ikinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 19.03.2026; reserve: ULKER, OYAKC, HALKB. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti."
+  },
+  {
+   "start": "2026-07-01",
+   "end": "2026-09-30",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "DSTKF",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TRALT",
+    "TTKOM",
+    "TUPRS",
+    "VAKBN",
+    "YKBNK"
+   ],
+   "added": [],
+   "removed": [],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15483/bist-pay-endeksleri-donemsel-degisiklikleri"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 19.06.2026; BIST 30'da degisiklik yok ('--'); reserve: PASEU, HALKB, ULKER. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti."
+  },
+  {
+   "start": "2026-10-01",
+   "end": "2026-12-31",
+   "tickers": [
+    "AEFES",
+    "AKBNK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "ISCTR",
+    "KCHOL",
+    "KRDMD",
+    "MGROS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TRALT",
+    "TRMET",
+    "TTKOM",
+    "TUPRS",
+    "VAKBN",
+    "YKBNK"
+   ],
+   "added": [
+    "TRMET"
+   ],
+   "removed": [
+    "DSTKF"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/15598/bist-pay-endeksleri-donemsel-degisiklikleri"
+   ],
+   "confidence": "high",
+   "notes": "Resmi duyuru tarihi 21.09.2026; reserve: BTCIM, TURSG, OYAKC. Degisiklikler resmi duyurudan; tam 30'luk liste kullanici referansi (2026-Q4, borsapy 2026-11-08) uzerinden geriye dogru zincirleme turetildi (her adimda 30 hisse ve tutarlilik dogrulandi) ve 21 Mayis 2024 tarihli bagimsiz tam liste (ekonomist.com.tr) ile uyumlu cikti. TRMET = TR Anadolu Metal Madencilik (eski Koza Anadolu Metal, KOZAA; kod 24.11.2025'ten beri TRMET). Borsamatik haberindeki 'TMDMR' kodu hatali/baska kaynak; resmi duyuruda TRMET. Tam liste borsapy referansiyla ayni."
+  }
+ ],
+ "unresolved": [
+  "Donem ici (ceyrek ortasi) uyelik degisikligi: aranan kaynaklarda bulunamadi; yok kabul edilmedi, 'bulunamadi' olarak isaretlendi. Tek donem ici olay KOZAL->TRALT kod degisikligi (24.11.2025).",
+  "Tam 30'luk listeler resmi duyurularda yoktur (yalnizca alinacak/cikarilacak/yedek paylar); listeler turetilmistir. Dogrulama: 2024-Q2 baslangic listesi (ekonomist.com.tr, 21.05.2024) zincirle birebir uyumlu; 2026-Q4 listesi kullanici/borsapy referansi.",
+  "borsaistanbul.com duyuru 14810/14906/14899/14925/15218 (Ingilizce/alternatif ID'ler) acilmadi; Turkce sayfalar (14682/14707/13287/14784/15220) kullanildi."
+ ],
+ "extra_sources": [
+  "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi",
+  "https://www.endeks24.com/bist-30-endeksinde-dstkfnin-yerini-trmet-aldi"
+ ]
+}

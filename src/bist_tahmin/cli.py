@@ -91,6 +91,26 @@ def _cmd_universe_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_universe_load_history(args: argparse.Namespace) -> int:
+    from .data import store
+    from .data.universe import HISTORY_CSV, HistoryConflict, read_history_csv
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        target = read_history_csv(args.file or HISTORY_CSV)
+        with conn:
+            ins, upd = store.load_membership_history(conn, target, dry_run=args.dry_run)
+    except (OSError, ValueError, HistoryConflict) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    print(f"{prefix}gecmis uyelik: {len(target)} aralik okundu; eklenecek/eklendi {ins}, valid_from erkene cekilen {upd}")
+    return 0
+
+
 def _cmd_fetch(args: argparse.Namespace) -> int:
     from .data import store
     from .data.fetch import fetch_all
@@ -281,6 +301,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--as-of", default=None, help="uyelik tarihi YYYY-MM-DD (varsayilan: bugun, Istanbul)")
     sync.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
     sync.set_defaults(func=_cmd_universe_sync)
+    hist = uni_sub.add_parser("load-history", help="reference/bist30 gecmis ceyreklik uyelik araliklarini yukle (idempotent)")
+    hist.add_argument("--file", default=None, help="CSV (varsayilan reference/bist30/membership_history.csv)")
+    hist.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
+    hist.set_defaults(func=_cmd_universe_load_history)
 
     pred = sub.add_parser("predict", help="tahmin uretimi")
     pred_sub = pred.add_subparsers(dest="predict_command", required=True)

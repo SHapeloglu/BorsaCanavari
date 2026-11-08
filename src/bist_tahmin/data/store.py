@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import psycopg
 
-from .universe import INDEX_NAME, Membership, diff_membership
+from .universe import INDEX_NAME, Membership, diff_membership, plan_history_load
 
 PRICE_COLUMNS = ["open", "high", "low", "close", "close_adj", "volume"]
 
@@ -209,3 +209,31 @@ def read_prices(
         out[t] = g.drop(columns="ticker").set_index("date").sort_index()
         out[t].index.name = "date"
     return out
+
+
+def load_membership_history(
+    conn: psycopg.Connection, target: Iterable[Membership], index_name: str = INDEX_NAME, *, dry_run: bool = False
+) -> tuple[int, int]:
+    """Gecmis uyelik araliklarini yukler (tek islem, idempotent). (eklenen, guncellenen) doner.
+
+    Mevcut acik satirlarin valid_from'u yalnizca daha ERKEN bir tarihe cekilir (bkz. universe.plan_history_load);
+    celiski varsa HistoryConflict firlatir ve hicbir sey yazmaz. bist_app'in DELETE yetkisi yoktur: silme yok.
+    """
+    existing = read_membership(conn, index_name)
+    inserts, updates = plan_history_load(existing, target)
+    if dry_run:
+        return len(inserts), len(updates)
+    with conn.transaction():
+        for old, new_from in updates:
+            conn.execute(
+                "UPDATE universe_membership SET valid_from = %s "
+                "WHERE ticker = %s AND index_name = %s AND valid_from = %s AND valid_to IS NULL",
+                (new_from, old.ticker, index_name, old.valid_from),
+            )
+        for m in inserts:
+            conn.execute(
+                "INSERT INTO universe_membership (ticker, index_name, valid_from, valid_to) VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT (ticker, index_name, valid_from) DO NOTHING",
+                (m.ticker, index_name, m.valid_from, m.valid_to),
+            )
+    return len(inserts), len(updates)

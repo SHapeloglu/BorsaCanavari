@@ -1,0 +1,541 @@
+{
+ "range": "2022-01-01..2024-06-30",
+ "periods": [
+  {
+   "start": "2022-01-01",
+   "end": "2022-03-31",
+   "tickers": [
+    "AKBNK",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "DOHOL",
+    "EKGYO",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HALKB",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TKFEN",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "VESTL",
+    "YKBNK"
+   ],
+   "added": [
+    "TOASO"
+   ],
+   "removed": [
+    "VAKBN"
+   ],
+   "reserve": [
+    "HEKTS",
+    "BERA",
+    "OTKAR"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/12771/2022-yili-birinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 17.12.2021); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2022-04-01",
+   "end": "2022-06-30",
+   "tickers": [
+    "AKBNK",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "EKGYO",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HALKB",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TKFEN",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "VESTL",
+    "YKBNK"
+   ],
+   "added": [
+    "HEKTS"
+   ],
+   "removed": [
+    "DOHOL"
+   ],
+   "reserve": [
+    "DOHOL",
+    "MGROS",
+    "TTRAK"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14347/2022-yili-ikinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 22.03.2022); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2022-07-01",
+   "end": "2022-09-30",
+   "tickers": [
+    "AKBNK",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "EKGYO",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HALKB",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TKFEN",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "VESTL",
+    "YKBNK"
+   ],
+   "added": [],
+   "removed": [],
+   "reserve": [
+    "DOHOL",
+    "AKSEN",
+    "MGROS"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14401/2022-yili-ucuncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 21.06.2022; no BIST 30 change (table lists only reserve column)); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2022-10-01",
+   "end": "2022-12-31",
+   "tickers": [
+    "AKBNK",
+    "AKSEN",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "EKGYO",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TKFEN",
+    "TOASO",
+    "TTKOM",
+    "TUPRS",
+    "VESTL",
+    "YKBNK"
+   ],
+   "added": [
+    "AKSEN"
+   ],
+   "removed": [
+    "HALKB"
+   ],
+   "reserve": [
+    "ALARK",
+    "OYAKC",
+    "DOHOL"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/12960/2022-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 21.09.2022); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2023-01-01",
+   "end": "2023-03-31",
+   "tickers": [
+    "AKBNK",
+    "AKSEN",
+    "ALARK",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "EKGYO",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TKFEN",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "ALARK",
+    "ODAS"
+   ],
+   "removed": [
+    "TTKOM",
+    "VESTL"
+   ],
+   "reserve": [
+    "KONTR",
+    "TTKOM",
+    "DOHOL"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14476/2023-yili-birinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 19.12.2022); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2023-04-01",
+   "end": "2023-06-30",
+   "tickers": [
+    "AKBNK",
+    "AKSEN",
+    "ALARK",
+    "ARCLK",
+    "ASELS",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "ENKAI"
+   ],
+   "removed": [
+    "TKFEN"
+   ],
+   "reserve": [
+    "KONTR",
+    "TTKOM",
+    "DOHOL"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14516/2023-yili-ikinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 16.03.2023); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2023-07-01",
+   "end": "2023-09-30",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ARCLK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KOZAA",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TAVHL",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "ASTOR"
+   ],
+   "removed": [
+    "AKSEN"
+   ],
+   "reserve": [
+    "OYAKC",
+    "DOHOL",
+    "TTKOM"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14545/2023-yili-ucuncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 16.06.2023); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2023-10-01",
+   "end": "2023-12-31",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ARCLK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "OYAKC",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "KONTR",
+    "OYAKC"
+   ],
+   "removed": [
+    "KOZAA",
+    "TAVHL"
+   ],
+   "reserve": [
+    "DOHOL",
+    "GESAN",
+    "TTKOM"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/13125/2023-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 21.09.2023 (page title/ID as indexed; table header says 01/10/2023-31/12/2023)); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2024-01-01",
+   "end": "2024-03-31",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ARCLK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "OYAKC",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [],
+   "removed": [],
+   "reserve": [
+    "BRSAN",
+    "DOAS",
+    "DOHOL"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/14627/2024-yili-birinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 22.12.2023; no BIST 30 change (rows '--' in added/removed columns)); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced."
+  },
+  {
+   "start": "2024-04-01",
+   "end": "2024-06-30",
+   "tickers": [
+    "AKBNK",
+    "ALARK",
+    "ASELS",
+    "ASTOR",
+    "BIMAS",
+    "BRSAN",
+    "EKGYO",
+    "ENKAI",
+    "EREGL",
+    "FROTO",
+    "GARAN",
+    "GUBRF",
+    "HEKTS",
+    "ISCTR",
+    "KCHOL",
+    "KONTR",
+    "KOZAL",
+    "KRDMD",
+    "ODAS",
+    "OYAKC",
+    "PETKM",
+    "PGSUS",
+    "SAHOL",
+    "SASA",
+    "SISE",
+    "TCELL",
+    "THYAO",
+    "TOASO",
+    "TUPRS",
+    "YKBNK"
+   ],
+   "added": [
+    "BRSAN"
+   ],
+   "removed": [
+    "ARCLK"
+   ],
+   "reserve": [
+    "ULKER",
+    "CIMSA",
+    "DOAS"
+   ],
+   "source_urls": [
+    "https://borsaistanbul.com/duyuru/13200/2024-yili-ikinci-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylar-belirlenmistir",
+    "https://www.ekonomist.com.tr/sozluk/bist-30-endeksi"
+   ],
+   "confidence": "high for added/removed/reserve (official Borsa Istanbul announcement, announced 21.03.2024); medium for the full tickers list (derived)",
+   "notes": "added/removed are quoted from the official announcement's BIST 30 table (columns parsed from HTML). Full 'tickers' list is DERIVED, not quoted: anchored on a 30-name list dated 21 May 2024 (ekonomist.com.tr, medium confidence, consistent with 2024Q2 official change BRSAN in/ARCLK out) and back-applied through the official added/removed lists. Chain check passed: every removed ticker was in the prior list, every added ticker was absent, 30 members in every period. Intra-period (non-quarterly) changes were not searched exhaustively; none surfaced. Ekonomist list (21 May 2024) is the anchor itself for this period."
+  }
+ ],
+ "unresolved": [],
+ "meta": {
+  "universe_note": "Implied composition at 2021Q4 (end of 2021, derived): AKBNK,ARCLK,ASELS,BIMAS,DOHOL,EKGYO,EREGL,FROTO,GARAN,GUBRF,HALKB,ISCTR,KCHOL,KOZAA,KOZAL,KRDMD,PETKM,PGSUS,SAHOL,SASA,SISE,TAVHL,TCELL,THYAO,TKFEN,TTKOM,TUPRS,VAKBN,VESTL,YKBNK",
+  "missing_independent_check": "No second independent full 30-name list for any earlier period was found; full lists for 2022-2023 rest on chain consistency plus the 2024 anchor.",
+  "ticker_changes": "No ticker-code changes/mergers affecting the constituents were found in these announcements; KOZAA (Koza Anadolu Metal) and KOZAL (Koza Altin) are distinct tickers. Not exhaustively verified beyond the announcements.",
+  "other_sources_seen": [
+   "2021Q4 announcement https://borsaistanbul.com/duyuru/14213/2021-yili-dorduncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir (BIST30: no change, reserve TOASO,HEKTS,MGROS)",
+   "2021Q3 https://borsaistanbul.com/duyuru/12664/2021-yili-ucuncu-uc-aylik-donemi-icin-bist-pay-endeksleri-kapsaminda-yer-alacak-paylarda-degisiklik-yapilmistir (+FROTO,VESTL; -OYAKC,TSKB)"
+  ]
+ }
+}

@@ -16,9 +16,11 @@ itibaren guvenilirdir.
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import logging
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import NamedTuple
 
 log = logging.getLogger(__name__)
@@ -87,3 +89,74 @@ def fetch_components(source, symbol: str = SOURCE_SYMBOL) -> list[str]:
 
 def open_tickers(rows: Sequence) -> list[str]:
     return sorted(m.ticker for m in map(_as_membership, rows) if m.valid_to is None)
+
+
+# --- Gecmis uyelik yukleme (Faz 3.5 on kosulu) ------------------------------------------------------------
+
+HISTORY_CSV = Path("reference/bist30/membership_history.csv")
+
+
+class HistoryConflict(UniverseError):
+    """Yuklenecek gecmis, DB'deki mevcut uyelikle celisiyor (otomatik cozulmez)."""
+
+
+def read_history_csv(path: str | Path = HISTORY_CSV) -> list[Membership]:
+    """tools/build_membership_history.py ciktisi: ticker,valid_from,valid_to,confidence (yari acik aralik)."""
+    out: list[Membership] = []
+    with Path(path).open(encoding="utf-8", newline="") as fh:
+        for r in csv.DictReader(fh):
+            out.append(Membership(r["ticker"].strip().upper(), dt.date.fromisoformat(r["valid_from"]),
+                                  dt.date.fromisoformat(r["valid_to"]) if r["valid_to"].strip() else None))
+    return out
+
+
+def _overlaps(a: Membership, b: Membership) -> bool:
+    a_end = a.valid_to or dt.date.max
+    b_end = b.valid_to or dt.date.max
+    return a.valid_from < b_end and b.valid_from < a_end
+
+
+def plan_history_load(existing: Iterable, target: Iterable) -> tuple[list[Membership], list[tuple[Membership, dt.date]]]:
+    """Saf fonksiyon: (eklenecekler, [(mevcut acik satir, yeni valid_from)]).
+
+    Kural (gecmis YALNIZ geriye dogru uzatilir, mevcut gozlemler bozulmaz):
+    - Mevcut acik satir (valid_to NULL) + hedefte acik aralik: mevcut satirin valid_from'u hedefinkine CEKILIR
+      (yalniz daha erkene; daha gec ise celiski). Hedefin kapali araliklari eklenir.
+    - Mevcutta hic satir yoksa hedefin hepsi eklenir.
+    - Zaten ayni satir varsa atlanir (idempotent).
+    - Sonuc uyelik, ayni hisse icin cakisan aralik icerirse HistoryConflict.
+    """
+    ex_by: dict[str, list[Membership]] = {}
+    for m in map(_as_membership, existing):
+        ex_by.setdefault(m.ticker, []).append(m)
+    tg_by: dict[str, list[Membership]] = {}
+    for m in map(_as_membership, target):
+        tg_by.setdefault(m.ticker, []).append(m)
+    inserts: list[Membership] = []
+    updates: list[tuple[Membership, dt.date]] = []
+    for t, tgs in sorted(tg_by.items()):
+        exs = ex_by.get(t, [])
+        ex_open = [m for m in exs if m.valid_to is None]
+        tg_open = [m for m in tgs if m.valid_to is None]
+        final: list[Membership] = [m for m in exs]
+        if ex_open and tg_open:
+            eo, to = ex_open[0], tg_open[0]
+            if to.valid_from > eo.valid_from:
+                raise HistoryConflict(f"{t}: hedef acik aralik {to.valid_from} mevcut {eo.valid_from}'den SONRA basliyor")
+            if to.valid_from < eo.valid_from:
+                updates.append((eo, to.valid_from))
+                final[final.index(eo)] = Membership(t, to.valid_from, None)
+        elif tg_open and not ex_open and exs:
+            raise HistoryConflict(f"{t}: hedefte acik aralik var ama mevcutta yalnizca kapali satirlar var")
+        for m in tgs:
+            if m.valid_to is None and (ex_open or any(e.valid_to is None for e in exs)):
+                continue  # acik aralik yukaridaki guncellemeyle ele alindi
+            if m in exs:
+                continue
+            inserts.append(m)
+            final.append(m)
+        for i, a in enumerate(final):
+            for b in final[i + 1:]:
+                if _overlaps(a, b):
+                    raise HistoryConflict(f"{t}: cakisan uyelik araliklari {a} / {b}")
+    return inserts, updates
