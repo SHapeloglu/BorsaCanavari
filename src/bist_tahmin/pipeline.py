@@ -8,6 +8,10 @@ Cikis kodlari (cron/izleme icin):
      donuk kanit olmaz (created_at ile made_at arasi acilir); bu yuzden durulur.
   4  (cli) is zaten calisiyor (kilit).
 XU100 indirilemezse is basarisiz sayilir (takvim kaynagi odur) ve istisna firlatir.
+Faz 4: tahmin adiminda aktif modeller de yazilir (predict/daily.py); `model_errors` varsa ya da devre kesici aciksa
+  cikis kodu en az 1. Tahmin adimindan sonra (veri guncelse) IZLEME adimi: her aktif model icin drift (alarm = cikis
+  1) ve devre kesici degerlendirmesi; ilk tetiklemede durum `system_state`e yazilir ve model uretimi bir SONRAKI
+  calismadan itibaren durur (baseline'lar surer). Izleme hatasi akisi bozmaz ama cikis kodunu 1 yapar.
 Her adimin sonucu `runs.detail`e HEMEN yazilir; is sonradan patlasa bile ne yapildigi gorunur.
 """
 
@@ -22,6 +26,8 @@ from .data import store
 from .data.fetch import CALENDAR_SYMBOL, fetch_all
 from .data.universe import fetch_components
 from .jobs import SKIPPED, checkpoint, tracked_job
+from .monitor import breaker, drift
+from .predict import daily as daily_mod
 from .predict.daily import LateWrite, run_daily
 from .resolve.resolver import count_overdue, resolve_due
 
@@ -37,6 +43,55 @@ class PipelineResult:
 
     def bump(self, code: int) -> None:
         self.exit_code = max(self.exit_code, code)
+
+
+def _monitor(conn, cfg: dict, out: PipelineResult, step, *, dry_run: bool, clock: dt.datetime) -> None:
+    """Drift + devre kesici (PROJE.md Bolum 12 adim 6). Hata akisi bozmaz ama cikis kodunu 1 yapar."""
+    try:
+        st = breaker.status(conn)
+        records = daily_mod.load_active_models(conn)
+        versions = [str(r.version) for r in records]
+        df = drift.load_resolved(conn, [*versions, drift.REFERENCE_VERSION]) if versions else None
+        info: dict = {"breaker_open": bool(st["tripped"]), "models": {}}
+        if st["tripped"]:
+            out.bump(1)
+            out.lines.append(f"[izleme] DEVRE KESICI ACIK (since {st.get('since')}, model {st.get('model_version')}): "
+                             f"{st.get('reason')}; modeller durduruldu, `bist breaker reset --reason ...` bekleniyor")
+        after = breaker.evaluate_after_date(st)
+        newly: tuple[str, breaker.BreakerVerdict] | None = None
+        for rec in records:
+            version = str(rec.version)
+            entry: dict = {"role": str(rec.role)}
+            d = drift.drift_check(df, version, cfg)
+            entry["drift"] = d.as_dict()
+            out.lines.append(f"[izleme] drift {version}: {d.note}")
+            if d.alert:
+                out.bump(1)
+                out.lines.append(f"[izleme] UYARI: DRIFT ALARMI {version}: Brier fark {d.gap:+.4f} > "
+                                 f"{cfg['drift']['brier_over_base_rate_alert']:+.4f}")
+            if not st["tripped"]:
+                v = breaker.evaluate_model(df, version, cfg, after=after)
+                entry["breaker"] = {"tripped": v.tripped, "relative_drawdown": v.relative_drawdown, "detail": v.detail}
+                out.lines.append(f"[izleme] devre kesici {version}: {v.detail}")
+                if v.tripped and newly is None:
+                    newly = (version, v)
+            info["models"][version] = entry
+        if newly is not None:
+            version, v = newly
+            info["tripped_now"] = version
+            out.bump(1)
+            if dry_run:
+                out.lines.append(f"[izleme] DEVRE KESICI TETIKLENECEKTI ({version}; kuru calisma: durum yazilmadi)")
+            elif breaker.trip(conn, v, version, now=clock):
+                out.lines.append(f"[izleme] DEVRE KESICI TETIKLENDI ({version}): {v.detail}; model uretimi bir "
+                                 "sonraki calismadan itibaren durur (baseline'lar surer)")
+        if not records:
+            out.lines.append("[izleme] aktif model yok")
+        step("monitor", info)
+    except Exception as exc:
+        out.bump(1)
+        out.lines.append(f"[izleme] UYARI: izleme basarisiz: {type(exc).__name__}: {exc}")
+        step("monitor", {"error": f"{type(exc).__name__}: {exc}"[:300]})
 
 
 def run_pipeline(
@@ -140,13 +195,18 @@ def run_pipeline(
             except LateWrite as exc:
                 out.bump(3)
                 out.lines.append(f"[predict] GEC: {exc}")
-                step("predict", {"late_write_refused": str(exc)[:300]})
+                part = getattr(exc, "result", None)   # modeller gec kaldiysa baseline'lar yazilmis olabilir
+                step("predict", {"late_write_refused": str(exc)[:300],
+                                 **({"baselines_inserted": part.inserted, "model_errors": part.model_errors}
+                                    if part is not None else {})})
             else:
                 cov = len(dres.evaluated) / dres.universe if dres.universe else 0.0
                 step("predict", {"made_at": str(dres.made_at), "inserted": dres.inserted,
                                  "skipped_existing": dres.skipped_existing, "evaluated": len(dres.evaluated),
                                  "universe": dres.universe, "coverage": round(cov, 3), "excluded": dres.excluded,
-                                 "base_rate": dres.base_rate, "skipped_baselines": dres.skipped_baselines})
+                                 "base_rate": dres.base_rate, "skipped_baselines": dres.skipped_baselines,
+                                 "models_written": dres.models_written, "models_ok": dres.models_ok,
+                                 "model_errors": dres.model_errors, "models_paused": dres.models_paused})
                 out.lines += ["[predict] " + s for s in dres.summary_lines()]
                 if cov < min_coverage:
                     out.bump(1)
@@ -156,6 +216,15 @@ def run_pipeline(
                     out.bump(1)
                     out.lines.append("[predict] UYARI: bazi baseline'lar yazilamadi (girdi yetersiz / "
                                      "gecmis yukselis orani yok); karsilastirma referansi eksik")
+                if dres.model_errors:
+                    out.bump(1)
+                    out.lines.append(f"[predict] UYARI: {len(dres.model_errors)} model atlandi "
+                                     f"({', '.join(sorted(dres.model_errors))}); baseline'lar etkilenmedi")
+                if dres.models_paused:
+                    out.bump(1)
+                    out.lines.append(f"[predict] UYARI: model uretimi DURDURULDU: {dres.models_paused}")
+            # 5) izleme: drift + devre kesici (veri guncel oldugu surece; yazim penceresi kapansa da degerlendirilir)
+            _monitor(conn, cfg, out, step, dry_run=dry_run, clock=clock)
         run.detail["exit_code"] = out.exit_code
         if out.exit_code == 3:
             run.status = SKIPPED

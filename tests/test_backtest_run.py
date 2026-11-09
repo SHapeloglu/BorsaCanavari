@@ -100,3 +100,15 @@ def test_too_short_data_raises(conn, ds):
     tiny = Dataset(d.frame[d.frame["date"] < dates[100]].reset_index(drop=True), 5, 0.0, d.feature_names, d.meta)
     with pytest.raises(ValueError, match="fold uretilemedi"):
         run_experiment(conn, _cfg(dates), tiny, SPEC, family="t_short", description="kisa", dry_run=True)
+
+
+def test_calibrated_spec_runs_and_is_recorded(conn, ds):
+    d, dates = ds
+    spec = ModelSpec(name="lr_cal", features="all_z", C=0.5, calibration="isotonic")
+    run = run_experiment(conn, _cfg(dates), d, spec, family="t_cal", description="kalibre")
+    rec = list_experiments(conn, "t_cal")[0]
+    assert rec["params_json"]["calibration"] == "isotonic"                       # on kayitta kalibrasyon ayari var
+    ri = run.result["run_info"]
+    assert ri["n_folds_calibrated"] > 0 and ri["spec"]["calibration"] == "isotonic"
+    assert run.preds["date"].max() < dates[600]                                  # holdout yine kilitli
+    assert run.preds["prob_up"].between(0.01, 0.99).all()

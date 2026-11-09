@@ -19,6 +19,13 @@ Kurallar (hepsi testlidir):
   fold ATLANIR ve sayilir (run_info). Hicbir sey uydurulmaz.
 - Test satirlari: fold.test_dates icinde, etiketi bilinen, ozellikleri sonlu satirlar.
 - prob_up [0.01, 0.99]'a kirpilir.
+- Kalibrasyon (ModelSpec.calibration 'isotonic'|'platt'; varsayilan 'none' = ham model, sonuclar eskisiyle ayni):
+  fold'un egitim satirlari (purge ve rolling pencere SONRASI) FARKLI gunlere gore siralanir; ilk %80 gun modeli
+  fit eder, son %20 gun yalniz kalibratoru fit eder. Fit satirlari yalniz etiketi ilk kalibrasyon gunune kadar
+  kapanmis olanlardir (end_date <= ilk kalibrasyon gunu), yani fit son gunu ile kalibrasyon baslangici arasinda
+  en az `horizon` islem gunu bosluk kalir. Test tahminleri ham olasilik -> kalibrator -> [0.01, 0.99] kirpma.
+  Kalibrasyon satiri < CALIBRATION_MIN_ROWS (ya da fit/kalibrasyon kumesi tek sinifli) ise o fold ham model
+  (tum egitimle fit) kullanir ve run_info'da sayilir.
 """
 
 from __future__ import annotations
@@ -31,6 +38,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn import __version__ as _SKLEARN_VERSION
+from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -63,6 +71,9 @@ TOP_FRAC = 0.2       # PROJE.md Bolum 11: kohort portfoyu en ust %20
 TAIL_DRAWS_MIN = 10  # her uc kuyrukta en az bu kadar bootstrap replikati (kantil gurultusu icin)
 MAX_RESAMPLES = 200_000
 CALIBRATION_BINS = 10
+CALIBRATIONS = ("none", "isotonic", "platt")
+CALIBRATION_FIT_FRAC = 0.8     # egitim gunlerinin ilk %80'i modeli, son %20'si kalibratoru fit eder
+CALIBRATION_MIN_ROWS = 300     # kalibrasyon satiri bunun altindaysa kalibrasyon yapilmaz (ham model)
 
 # Etiket/gelecek turevi sutunlar ozellik olamaz (sizinti): ad onekleri ve tam adlar
 _FORBIDDEN_EXACT = frozenset({"tradable_ret", "end_date"})
@@ -126,6 +137,7 @@ class ModelSpec:
     penalty: str = "l2"                              # 'l1' | 'l2'
     window: str = "expanding"                        # 'expanding' | 'rolling'
     rolling_days: int | None = None                  # rolling icin zorunlu: son N FARKLI egitim gunu
+    calibration: str = "none"                        # 'none' | 'isotonic' | 'platt'
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:
@@ -141,6 +153,8 @@ class ModelSpec:
             raise ValueError(f"penalty 'l1' ya da 'l2' olmali: {self.penalty!r}")
         if self.window not in ("expanding", "rolling"):
             raise ValueError(f"window 'expanding' ya da 'rolling' olmali: {self.window!r}")
+        if self.calibration not in CALIBRATIONS:
+            raise ValueError(f"calibration {CALIBRATIONS} icinden olmali: {self.calibration!r}")
         if self.window == "rolling":
             if (self.rolling_days is None or isinstance(self.rolling_days, bool)
                     or int(self.rolling_days) != self.rolling_days or self.rolling_days < 1):
@@ -166,6 +180,7 @@ class ModelSpec:
             "window": self.window,
             "rolling_days": None if self.rolling_days is None else int(self.rolling_days),
             "prob_clip": list(PROB_CLIP),
+            "calibration": self.calibration,
         }
 
 
@@ -180,6 +195,108 @@ def _make_pipeline(spec: ModelSpec, seed: int) -> Pipeline:
         kwargs["penalty"] = spec.penalty
     kwargs["solver"] = solver
     return Pipeline([("scale", StandardScaler()), ("clf", LogisticRegression(**kwargs))])
+
+
+# ---------------------------------------------------------------- kalibrasyon
+
+class _Platt:
+    """Platt olceklemesi: ham olasiligin logit'i uzerinde 1-boyutlu (neredeyse duzenlilestirilmemis) lojistik regresyon."""
+
+    def __init__(self) -> None:
+        self.lr = LogisticRegression(C=1e6, max_iter=1000)
+
+    @staticmethod
+    def _z(p: np.ndarray) -> np.ndarray:
+        q = np.clip(np.asarray(p, dtype=float), 1e-6, 1.0 - 1e-6)
+        return np.log(q / (1.0 - q)).reshape(-1, 1)
+
+    def fit(self, p: np.ndarray, y: np.ndarray) -> "_Platt":
+        self.lr.fit(self._z(p), np.asarray(y).astype(int))
+        return self
+
+    def predict(self, p: np.ndarray) -> np.ndarray:
+        return self.lr.predict_proba(self._z(p))[:, 1]
+
+
+def make_calibrator(kind: str):
+    """'isotonic' (sklearn IsotonicRegression, clip, [0,1]) ya da 'platt' kalibratoru; fit(p, y) / predict(p)."""
+    if kind == "isotonic":
+        return IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0)
+    if kind == "platt":
+        return _Platt()
+    raise ValueError(f"bilinmeyen kalibrasyon: {kind!r}")
+
+
+class FoldModel:
+    """Bir fold'un egitilmis modeli (+ varsa kalibratoru). `predict` testte kirpilmis olasilik dondurur.
+
+    Kalibrator YALNIZ egitimin son kisminin ham olasiliklarina fit edilir; predict cagrilari durumu degistirmez.
+    `info` kalibrasyon ayrintilarini tasir (applied, neden, satir/gun sayilari, fit_last_date, cal_first_date).
+    """
+
+    def __init__(self, pipeline: Pipeline, calibrator, info: dict) -> None:
+        self.pipeline = pipeline
+        self.calibrator = calibrator
+        self.info = info
+
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        raw = self.pipeline.predict_proba(x)[:, 1]
+        if self.calibrator is not None:
+            raw = np.asarray(self.calibrator.predict(raw), dtype=float)
+        return np.clip(raw, PROB_CLIP[0], PROB_CLIP[1])
+
+
+def fit_fold_model(
+    spec: ModelSpec,
+    seed: int,
+    x_tr: np.ndarray,
+    y_tr: np.ndarray,
+    dates_tr: np.ndarray,
+    end_tr: np.ndarray,
+    *,
+    cal_frac_fit: float = CALIBRATION_FIT_FRAC,
+    min_cal_rows: int = CALIBRATION_MIN_ROWS,
+) -> FoldModel:
+    """Fold egitiminden modeli (ve istenirse kalibratoru) fit eder.
+
+    `x_tr/y_tr/dates_tr/end_tr` zaten izinli (purge + pencere sonrasi) egitim satirlaridir.
+    calibration='none': tum egitimle tek Pipeline (eski davranis, birebir).
+    Aksi halde: farkli gunlerin ilk `cal_frac_fit` kismi (ve etiketi ilk kalibrasyon gunune kadar kapanmis satirlar)
+    modeli, kalan son gunler kalibratoru fit eder. Yetersiz/tek sinifli ise ham model (tum egitim) ve info'da neden.
+    """
+    y_int = np.asarray(y_tr).astype(int)
+    info: dict[str, Any] = {"kind": spec.calibration, "applied": False, "reason": None}
+    if spec.calibration != "none":
+        dates = pd.DatetimeIndex(dates_tr)
+        ends = pd.DatetimeIndex(end_tr)
+        uniq = dates.unique().sort_values()
+        n_fit_days = int(math.floor(cal_frac_fit * len(uniq)))
+        if n_fit_days < 1 or n_fit_days >= len(uniq):
+            info["reason"] = "too_few_days"
+        else:
+            first_cal = uniq[n_fit_days]
+            cal_mask = np.asarray(dates >= first_cal)
+            fit_mask = np.asarray((dates < first_cal) & (ends <= first_cal))  # etiketi kalibrasyondan once kapanmis
+            n_cal, n_fit = int(cal_mask.sum()), int(fit_mask.sum())
+            info.update(n_cal_rows=n_cal, n_fit_rows=n_fit, n_cal_days=int(len(uniq) - n_fit_days),
+                        cal_first_date=str(first_cal.date()),
+                        fit_last_date=str(dates[fit_mask].max().date()) if n_fit else None)
+            if n_cal < min_cal_rows:
+                info["reason"] = "too_few_cal_rows"
+            elif n_fit < MIN_TRAIN_ROWS or np.unique(y_int[fit_mask]).size < 2:
+                info["reason"] = "fit_part_insufficient"
+            elif np.unique(y_int[cal_mask]).size < 2:
+                info["reason"] = "single_class_cal"
+            else:
+                pipe = _make_pipeline(spec, seed)
+                pipe.fit(x_tr[fit_mask], y_int[fit_mask])
+                raw_cal = pipe.predict_proba(x_tr[cal_mask])[:, 1]
+                cal = make_calibrator(spec.calibration).fit(raw_cal, y_int[cal_mask])
+                info["applied"] = True
+                return FoldModel(pipe, cal, info)
+    pipe = _make_pipeline(spec, seed)
+    pipe.fit(x_tr, y_int)
+    return FoldModel(pipe, None, info)
 
 
 # ---------------------------------------------------------------- walk-forward
@@ -314,10 +431,11 @@ def run_walk_forward(
             skipped.append({"fold_id": fid, "reason": "no_test_rows", "n_train": int(train_mask.sum())})
             continue
 
-        model = _make_pipeline(spec, seed)
-        model.fit(x_all[train_mask], y_tr.astype(int))
-        prob = model.predict_proba(x_all[test_mask])[:, 1]
-        prob = np.clip(prob, PROB_CLIP[0], PROB_CLIP[1])
+        model = fit_fold_model(spec, seed, x_all[train_mask], y_tr, date_s[train_mask].to_numpy(),
+                               end_s[train_mask].to_numpy())
+        prob = model.predict(x_all[test_mask])
+        if spec.calibration != "none":
+            info["calibration"] = model.info
 
         part = data.loc[test_mask, ["date", "ticker"]].copy()
         part["fold_id"] = fid
@@ -331,6 +449,7 @@ def run_walk_forward(
         out = pd.concat(parts, ignore_index=True)[list(PRED_COLUMNS)]
     else:
         out = pd.DataFrame({c: pd.Series(dtype=float) for c in PRED_COLUMNS})
+    cal_infos = [fi["calibration"] for fi in fold_infos if "calibration" in fi]
     out.attrs["run_info"] = {
         "spec": spec.params(),
         "seed": int(seed),
@@ -341,6 +460,12 @@ def run_walk_forward(
         "skipped_folds": skipped,
         "folds": fold_infos,
     }
+    if spec.calibration != "none":
+        out.attrs["run_info"].update(
+            n_folds_calibrated=sum(1 for c in cal_infos if c["applied"]),
+            n_folds_calibration_skipped=sum(1 for c in cal_infos if not c["applied"]),
+            calibration_skip_reasons=sorted({c["reason"] for c in cal_infos if not c["applied"]}),
+        )
     return out
 
 
@@ -586,6 +711,12 @@ def evaluate(
     warnings: list[str] = []
     if run_info and run_info.get("n_folds_skipped"):
         warnings.append(f"{run_info['n_folds_skipped']} fold atlandı (tek sınıflı/yetersiz eğitim ya da test satırı yok).")
+    if run_info and run_info.get("n_folds_calibration_skipped"):
+        warnings.append(
+            f"{run_info['n_folds_calibration_skipped']} fold'da kalibrasyon yapılmadı (ham model kullanıldı; "
+            f"neden: {', '.join(run_info.get('calibration_skip_reasons') or [])}); "
+            f"kalibre edilen fold: {run_info.get('n_folds_calibrated')}."
+        )
     if n_no_br:
         warnings.append(f"{n_no_br} satır base_rate baseline'ı tanımsız olduğu için dışarıda bırakıldı.")
     if n_unlabeled:
@@ -724,6 +855,9 @@ def format_result(result: dict) -> str:
     ri = result.get("run_info")
     if ri:
         L.append(f"- Fold: {ri.get('n_folds_run')}/{ri.get('n_folds')} çalıştı, {ri.get('n_folds_skipped')} atlandı")
+        if spec.get("calibration", "none") != "none":
+            L.append(f"- Kalibrasyon: {spec['calibration']} | kalibre edilen fold: {ri.get('n_folds_calibrated')}, "
+                     f"ham kalan: {ri.get('n_folds_calibration_skipped')}")
     if not result.get("sufficient"):
         L.append("")
         L.append(f"> **YETERSİZ ÖRNEK:** farklı gün sayısı {result.get('n_dates')} < {result.get('min_resolved_dates')}. "

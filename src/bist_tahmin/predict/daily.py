@@ -1,6 +1,11 @@
 """Gunluk tahmin uretimi (PROJE.md Bolum 12, adim 3-4): ozellikler + baseline'lar -> tahmin defteri.
 
-Faz 2'de ML modeli yoktur; yalnizca baseline'lar yazilir (model_role='baseline'). Ozellik uretimi evreni
+Baseline'lar (model_role='baseline') HER ZAMAN once yazilir. Sonra (Faz 4) aktif modeller (champion/challenger,
+`models.registry.load_active_models`) AYRI bir blokta, AYRI write_predictions cagrilariyla calisir: bir modelin hatasi
+(ValueError, eksik/NaN ozellik, bozuk parametre...) yalniz o modeli atlatir, baseline'lari ve diger modelleri etkilemez
+(`DailyResult.model_errors`). Devre kesici aciksa model satiri URETILMEZ ama baseline'lar yazilir (baseline'lar olcum
+kontroludur, model iddiasi degildir); neden `models_paused`ta. Yazim penceresi (LateWrite) modeller icin de gecerlidir.
+Ozellik uretimi evreni
 belirler: ozellik hesaplanabilen (yeterli gecmis, made_at'te bar var) hisseler "degerlendirme evreni"dir ve
 TUM baseline'lar ayni evrene yazilir; boylece modeller/baseline'lar ayni (hisse, gun) kumeleri uzerinde
 karsilastirilir.
@@ -12,6 +17,7 @@ Gecmis bir gun icin yazmak (`allow_backfill=True`) yalnizca gelistirme/test icin
 from __future__ import annotations
 
 import datetime as dt
+import math
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -28,6 +34,7 @@ from ..calendar import next_session_open
 from ..data import store
 from ..data.universe import members_on
 from ..features.build import build_features
+from ..monitor import breaker
 from .ledger import PredictionRow, baseline_feature_hash, write_predictions
 
 INDEX_SYMBOL = "XU100"
@@ -35,7 +42,34 @@ MIN_HISTORY_DAYS = 60
 
 
 class LateWrite(ValueError):
-    """Tahmin, made_at'i izleyen seansin acilisindan sonra yazilmak isteniyor (ileriye donuk kanit olmaz)."""
+    """Tahmin, made_at'i izleyen seansin acilisindan sonra yazilmak isteniyor (ileriye donuk kanit olmaz).
+
+    Modeller icin firlatildiginda baseline'lar zaten yazilmistir; o ana kadarki sonuc `exc.result` (DailyResult)."""
+
+    result: DailyResult | None = None
+
+
+# --- models paketi sozlesmesi (T): import GEC yapilir ---------------------------------------------------------------
+# `models` paketi yoksa (Faz 4 oncesi / birlestirme oncesi) aktif model yok sayilir; baska her hata gorunur olur.
+# Testler bu iki ismi `bist_tahmin.predict.daily` uzerinde ya da kaynak modulde (models.registry / models.logreg)
+# degistirebilir: ikisi de cagri aninda cozulur.
+
+def load_active_models(conn: psycopg.Connection) -> list:
+    """models.registry.load_active_models(conn) -> [ModelRecord(version, role, trained_at, train_end, params)]."""
+    try:
+        from ..models import registry
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("bist_tahmin.models"):
+            return []
+        raise
+    return list(registry.load_active_models(conn))
+
+
+def predict_prob(params: dict, features) -> float:
+    """models.logreg.predict_prob(params, features) -> float (eksik/NaN ozellik ValueError)."""
+    from ..models import logreg
+
+    return logreg.predict_prob(params, features)
 
 
 @dataclass
@@ -49,7 +83,14 @@ class DailyResult:
     inserted: int = 0
     skipped_existing: int = 0
     skipped_baselines: dict[str, int] = field(default_factory=dict)  # baseline -> girdi yetersiz hisse sayisi
-    rows: list[PredictionRow] = field(default_factory=list)
+    rows: list[PredictionRow] = field(default_factory=list)            # yalniz baseline satirlari
+    # Faz 4 (modeller). `inserted`/`skipped_existing` yalniz baseline'lari sayar.
+    model_rows: list[PredictionRow] = field(default_factory=list)
+    models_written: int = 0                                           # yazilan YENI model satiri
+    models_skipped_existing: int = 0
+    models_ok: list[str] = field(default_factory=list)                # satiri uretilip yazilan model surumleri
+    model_errors: dict[str, str] = field(default_factory=dict)        # surum -> "Tip: mesaj" (atlanan model)
+    models_paused: str | None = None                                  # devre kesici acik ise nedeni
 
     def summary_lines(self) -> list[str]:
         verb = "yazilacak (kuru calisma)" if self.dry_run else "yazildi"
@@ -61,6 +102,12 @@ class DailyResult:
         ]
         lines += [f"DISLANAN {t}: {why}" for t, why in sorted(self.excluded.items())]
         lines += [f"BASELINE ATLANDI {n}: {c} hisse (girdi yetersiz)" for n, c in sorted(self.skipped_baselines.items())]
+        if self.models_paused:
+            lines.append(f"MODELLER DURDURULDU: {self.models_paused}")
+        elif self.models_ok or self.model_errors:
+            lines.append(f"model satiri {verb}: {self.models_written}; zaten vardi: {self.models_skipped_existing}; "
+                         f"modeller: {', '.join(self.models_ok) or '-'}")
+        lines += [f"MODEL ATLANDI {v}: {why}" for v, why in sorted(self.model_errors.items())]
         return lines
 
 
@@ -140,13 +187,87 @@ def run_daily(
     if when.tzinfo is None:
         when = when.tz_localize("Europe/Istanbul")
     deadline = next_session_open(day)
-    if not allow_backfill and when > deadline:
-        probe = write_predictions(conn, rows, dry_run=True)
-        if probe.inserted > 0:
-            raise LateWrite(
-                f"made_at={day.date()} icin yazim penceresi kapandi (son: {deadline:%Y-%m-%d %H:%M} Istanbul, "
-                f"simdi: {when.tz_convert('Europe/Istanbul'):%Y-%m-%d %H:%M}); {probe.inserted} yeni satir yazilmadi"
-            )
+
+    def check_window(candidate: list[PredictionRow]) -> None:
+        if not allow_backfill and when > deadline:
+            probe = write_predictions(conn, candidate, dry_run=True)
+            if probe.inserted > 0:
+                raise LateWrite(
+                    f"made_at={day.date()} icin yazim penceresi kapandi (son: {deadline:%Y-%m-%d %H:%M} Istanbul, "
+                    f"simdi: {when.tz_convert('Europe/Istanbul'):%Y-%m-%d %H:%M}); {probe.inserted} yeni satir yazilmadi"
+                )
+
+    check_window(rows)
     wr = write_predictions(conn, rows, dry_run=dry_run, created_at=created_at)
     res.inserted, res.skipped_existing = wr.inserted, wr.skipped_existing
+
+    # --- Faz 4: modeller (baseline'lar yukarida yazildi; buradaki hicbir hata onlari etkileyemez) ---------------
+    _run_models(conn, cfg, fs, res, day=day, horizon=horizon, clip=clip, dry_run=dry_run,
+                created_at=created_at, check_window=check_window)
     return res
+
+
+def _models_pause_reason(conn: psycopg.Connection, res: DailyResult) -> str | None:
+    """Devre kesici aciksa nedeni; durum OKUNAMAZSA da durdurur (belirsizlikte model iddiasi uretilmez)."""
+    try:
+        with conn.transaction():
+            st = breaker.status(conn)
+    except Exception as exc:
+        res.model_errors["circuit_breaker"] = f"{type(exc).__name__}: {exc}"[:300]
+        return f"devre kesici durumu okunamadi ({type(exc).__name__}); modeller guvenli tarafta durduruldu"
+    if not st.get("tripped"):
+        return None
+    return (f"devre kesici ACIK (since {st.get('since')}, model {st.get('model_version')}): {st.get('reason')}; "
+            "yalnizca `bist breaker reset --reason ...` ile kapanir")
+
+
+def _run_models(conn, cfg, fs, res: DailyResult, *, day, horizon, clip, dry_run, created_at, check_window) -> None:
+    paused = _models_pause_reason(conn, res)
+    if paused:
+        res.models_paused = paused
+        return
+    try:
+        with conn.transaction():
+            records = load_active_models(conn)
+    except Exception as exc:  # kayit defteri okunamadi: model yok, ama baseline'lar yazildi
+        res.model_errors["registry"] = f"{type(exc).__name__}: {exc}"[:300]
+        return
+    # Once TUM modellerin satirlari uretilir (saf hesap), sonra yazilir; boylece model hatasi yazimi yarida kesmez.
+    for rec in records:
+        version, role = str(rec.version), str(rec.role)
+        try:
+            if role not in ("champion", "challenger"):
+                raise ValueError(f"model rolu champion/challenger olmali: {role!r}")
+            mrows: list[PredictionRow] = []
+            for t in res.evaluated:
+                fr = fs.rows[t]
+                p = float(predict_prob(rec.params, fr.features))
+                if not math.isfinite(p):
+                    raise ValueError(f"{t}: model olasiligi sonlu degil")
+                # prob_up kirpilir (Bolum 3: prob_clip); score KIRPILMAMIS olasiliktir: kirpma esitlik uretip
+                # kohort siralamasini bozmasin.
+                mrows.append(PredictionRow(
+                    ticker=t, made_at=day.date(), horizon_days=horizon, prob_up=min(max(p, clip[0]), clip[1]),
+                    score=p, model_version=version, model_role=role, feature_hash=fr.feature_hash,
+                    features_json=fr.features_json,
+                ))
+        except Exception as exc:
+            res.model_errors[version] = f"{type(exc).__name__}: {exc}"[:300]
+            continue
+        if not mrows:
+            res.model_errors[version] = "degerlendirilen hisse yok"
+            continue
+        try:
+            check_window(mrows)
+        except LateWrite as exc:
+            exc.result = res
+            raise
+        try:
+            wr = write_predictions(conn, mrows, dry_run=dry_run, created_at=created_at)
+        except Exception as exc:
+            res.model_errors[version] = f"yazim hatasi {type(exc).__name__}: {exc}"[:300]
+            continue
+        res.model_rows += mrows
+        res.models_ok.append(version)
+        res.models_written += wr.inserted
+        res.models_skipped_existing += wr.skipped_existing

@@ -227,6 +227,91 @@ def _cmd_run_daily(args: argparse.Namespace) -> int:
     return res.exit_code
 
 
+def _cmd_health(args: argparse.Namespace) -> int:
+    """Saglik kontrolu (salt okunur): 0 saglikli, 1 uyari, 2 kritik. cron_health.sh sonucu ALERT.txt'ye yansitir."""
+    import psycopg
+
+    from .monitor.health import run_health
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    try:
+        cfg = load_config(args.config)
+        with conn:
+            report = run_health(conn, cfg, max_age_hours=args.max_age_hours)
+    except (ConfigError, ValueError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"KRITIK: saglik kontrolu veritabanina erisemedi: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    for line in report.lines():
+        print(line)
+    return report.exit_code
+
+
+def _cmd_breaker_status(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .monitor import breaker
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    try:
+        with conn:
+            st = breaker.status(conn)
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__} (migration 006 uygulandi mi?)", file=sys.stderr)
+        return 2
+    if st["tripped"]:
+        print(f"devre kesici: ACIK (since {st['since']}, model {st['model_version']}, "
+              f"goreli dusus {st['relative_drawdown']})")
+        print(f"neden: {st['reason']}")
+        print("model uretimi durdu (baseline'lar surer). Kapatmak icin: bist breaker reset --reason \"...\"")
+    else:
+        print("devre kesici: kapali")
+        if st.get("reset_at"):
+            print(f"son sifirlama: {st['reset_at']} ({st['reset_reason']}); degerlendirme {st['evaluate_after']} "
+                  "sonrasi kohortlarla yeniden basladi")
+    print(f"gecmis kayit sayisi: {len(st['history'])}")
+    return 1 if st["tripped"] else 0
+
+
+def _cmd_breaker_reset(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .monitor import breaker
+
+    reason = (args.reason or "").strip()
+    if not reason:
+        print("hata: --reason (acik gerekce) zorunlu; devre kesici gerekcesiz sifirlanmaz", file=sys.stderr)
+        return 2
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        with conn:
+            before = breaker.status(conn)
+            if args.dry_run:
+                print(f"{prefix}devre kesici su an {'ACIK' if before['tripped'] else 'kapali'}; gerekce: {reason}")
+                return 0
+            new = breaker.reset(conn, reason)
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    if not before["tripped"]:
+        print("not: devre kesici zaten kapaliydi; yalnizca kayit eklendi")
+    print(f"devre kesici SIFIRLANDI (gerekce: {reason}); degerlendirme {new['evaluate_after']} sonrasi "
+          "kohortlarla yeniden baslar. Modeller bir sonraki gunluk akista tekrar uretilir.")
+    return 0
+
+
 def _emit_markdown(text: str, out: str | None) -> None:
     """Markdown'i stdout'a basar; --out verilirse dosyaya da yazar (ust dizin yoksa olusturulur)."""
     try:
@@ -385,6 +470,20 @@ def build_parser() -> argparse.ArgumentParser:
     rd = sub.add_parser("run-daily", help="gunluk akis: indir -> coz -> tahmin (cron icin; cikis 3 = bayat veri)")
     rd.add_argument("--dry-run", action="store_true", help="veritabanina yazmadan goster")
     rd.set_defaults(func=_cmd_run_daily)
+
+    hl = sub.add_parser("health", help="saglik kontrolu: akis calisti mi, veri guncel mi (0 saglikli, 1 uyari, 2 kritik)")
+    hl.add_argument("--max-age-hours", type=float, default=72.0,
+                    help="son BASARILI gunluk akisin en fazla yasi, saat (varsayilan 72: hafta sonu + tatil payi)")
+    hl.set_defaults(func=_cmd_health)
+
+    br_ = sub.add_parser("breaker", help="devre kesici (model uretimi duraklatma) durumu ve elle sifirlama")
+    br_sub = br_.add_subparsers(dest="breaker_command", required=True)
+    bst = br_sub.add_parser("status", help="devre kesici durumu (cikis 0 kapali, 1 acik)")
+    bst.set_defaults(func=_cmd_breaker_status)
+    brs = br_sub.add_parser("reset", help="devre kesiciyi elle kapat; --reason ZORUNLU (yoksa cikis 2)")
+    brs.add_argument("--reason", default=None, help="sifirlama gerekcesi (kayda gecer)")
+    brs.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
+    brs.set_defaults(func=_cmd_breaker_reset)
 
     base = sub.add_parser("baseline", help="baseline islemleri")
     base_sub = base.add_subparsers(dest="baseline_command", required=True)

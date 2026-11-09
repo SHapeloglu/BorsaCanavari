@@ -15,3 +15,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Cumartesi 10:00 Istanbul haftalik rapor (salt okunur) -> /opt/bist-tahmin/reports/rapor-YYYY-AA-GG.md
 0 8,9 * * 6 root ONLY_IST_HOUR=10 /opt/bist-tahmin/deploy/cron_weekly.sh
+
+# Hafta ici 20:30 Istanbul saglik kontrolu (`bist health`): akis calisti mi, veri guncel mi, devre kesici acik mi?
+# 20:30 Istanbul = 18:30 Berlin (kis) ya da 19:30 Berlin (yaz). Cikis != 0 ise /opt/bist-tahmin/logs/ALERT.txt + syslog.
+30 18,19 * * 1-5 root ONLY_IST_HOUR=20 /opt/bist-tahmin/deploy/cron_health.sh

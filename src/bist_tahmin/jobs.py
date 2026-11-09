@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 import psycopg
 from psycopg.types.json import Jsonb
 
+from .monitor.state import to_jsonable
+
 OK, SKIPPED, FAILED = "ok", "skipped", "failed"
 
 
@@ -79,16 +81,8 @@ def tracked_job(
 
 
 def _jsonable(obj):
-    """Sozluk/liste/Timestamp/tarih iceren ayrintilari JSON'a uygun hale getirir (anahtarlar str)."""
-    if isinstance(obj, dict):
-        return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple, set)):
-        return [_jsonable(v) for v in (sorted(obj) if isinstance(obj, set) else obj)]
-    if isinstance(obj, (dt.date, dt.datetime)):
-        return obj.isoformat()
-    if hasattr(obj, "isoformat"):
-        return obj.isoformat()
-    return obj
+    """Sozluk/liste/Timestamp/tarih/numpy iceren ayrintilari JSON'a uygun hale getirir (anahtarlar str, NaN -> None)."""
+    return to_jsonable(obj)
 
 
 def _finish(conn: psycopg.Connection, run: JobRun, status: str, detail: dict) -> None:
