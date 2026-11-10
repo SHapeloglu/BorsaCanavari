@@ -164,11 +164,16 @@ def test_concurrent_promotes_leave_exactly_one_champion(db):
     for i in range(6):
         _reg(conn, f"c{i}")
     errors: list[Exception] = []
+    # bist_app rolu CONNECTION LIMIT 5 (db.py); fixture baglantisi 1 yer tutar, bu yuzden ayni anda en fazla 3
+    # isci baglanti acar (toplam <= 4). 6 terfi yine tamamen yarisir; limit DB ayari degistirilerek degil, test
+    # tarafinda asilmaz.
+    slots = threading.BoundedSemaphore(3)
 
     def worker(v):
         try:
-            with psycopg.connect(info, autocommit=True) as c:
-                reg.promote(c, v)
+            with slots:
+                with psycopg.connect(info, autocommit=True) as c:
+                    reg.promote(c, v)
         except Exception as exc:  # noqa: BLE001 - sonuc sayilacak
             errors.append(exc)
 

@@ -80,7 +80,17 @@ def test_partial_problem_exit_code_is_a_warning(hdb):
 def test_skipped_run_with_exit_3_is_a_warning(hdb):
     conn, _ = hdb
     _run(conn, _ist(2026, 10, 30, 19, 0, 5), "skipped", {"exit_code": 3})
-    assert run_health(conn, now=NOW).exit_code == WARN
+    rep = run_health(conn, now=NOW)
+    assert rep.exit_code == WARN
+    assert _levels(rep)["gunluk akis"] == WARN and _levels(rep)["son basarili akis"] == WARN
+
+
+def test_stuck_daily_run_is_critical(hdb):
+    conn, _ = hdb
+    _run(conn, _ist(2026, 10, 30, 19, 0, 5), "running", None, finished=False)     # 90 dk once basladi, hala running
+    rep = run_health(conn, now=NOW)
+    assert _levels(rep)["gunluk akis"] == CRIT and rep.exit_code == CRIT
+    assert "is calismadi" in "\n".join(rep.lines())
 
 
 def test_retry_that_succeeded_supersedes_an_earlier_skipped_run(hdb):

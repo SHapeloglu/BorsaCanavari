@@ -111,14 +111,18 @@ def test_good_challenger_approved_only_when_all_conditions_hold(ledger, book):
 def test_deliberately_bad_challengers_are_rejected_with_reasons(ledger, book):
     book.write(ledger, "rnd", _random())
     book.write(ledger, "rev", _reversed(book))
+    # rnd: rastgele secim, referans (sabit 0.5 = tum evren secilir, net = -maliyet) uzerinde net fazla getiri
+    # orneklemde gecebilir (ortalama gross fazla ~0, referans -2*maliyet). Red yine Brier'dan gelir; net kosulu
+    # yalniz ters isaret (rev) icin beklenir, cunku o gercekten kotu.
+    expected_net_fail = {"rnd": False, "rev": True}
     for name in ("rnd", "rev"):
         dec = pr.promote_check(ledger, CFG, name, holdout_result=GOOD_HOLDOUT)
         assert not dec.approved
         assert pr.CHECK_BRIER in failed(dec), pr.format_decision(dec)
-        assert pr.CHECK_NET in failed(dec), pr.format_decision(dec)
+        assert (pr.CHECK_NET in failed(dec)) is expected_net_fail[name], pr.format_decision(dec)
         assert "RED" in dec.summary and pr.CHECK_BRIER in dec.summary
         text = pr.format_decision(dec)
-        assert "KALDI" in text and "yatirim tavsiyesi degildir".replace("i", "i") or True
+        assert "KALDI" in text
         assert "yatırım tavsiyesi değildir" in text
 
 

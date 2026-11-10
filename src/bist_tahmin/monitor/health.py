@@ -128,7 +128,12 @@ def check_daily_run(conn: psycopg.Connection, now: dt.datetime, max_age_hours: f
         else:
             checks.append(Check("son basarili akis", OK, f"{_fmt(ok_rows[0][0])} ({age_h:.1f} saat once)"))
     else:
-        checks.append(Check("son basarili akis", CRIT, "hic 'ok' kaydi yok"))
+        # Hic 'ok' yok. Beklenen gunde atlanmis bir akis varsa is calisti ama tahmin yazmadi: uyari.
+        # Hic calisma yoksa 'is hic calismadi' => kritik.
+        if after:
+            checks.append(Check("son basarili akis", WARN, "hic 'ok' kaydi yok (yalnizca atlanan akis var)"))
+        else:
+            checks.append(Check("son basarili akis", CRIT, "hic 'ok' kaydi yok"))
     return checks
 
 

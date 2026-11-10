@@ -79,11 +79,12 @@ def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge
     if spec.window == "rolling" and mask.any():
         uniq = dates[mask].drop_duplicates().sort_values()
         cutoff = uniq.iloc[-int(spec.rolling_days):].iloc[0]
-        mask &= (dates >= cutoff).to_numpy()
+        mask = mask & (dates >= cutoff).to_numpy()
     feats = list(spec.feature_list)
     x = f[feats].to_numpy(dtype=float)
     y = pd.to_numeric(f[spec.label], errors="coerce").to_numpy(dtype=float)
-    mask &= np.isfinite(x).all(axis=1) & np.isfinite(y)
+    # not: 'mask &= ...' pandas'in salt-okunur (copy-on-write) dizisinde ValueError verir; yeni dizi uretilir
+    mask = mask & np.isfinite(x).all(axis=1) & np.isfinite(y)
     rows = f.loc[mask].copy()
     rows["date"] = pd.to_datetime(rows["date"])
     rows["end_date"] = pd.to_datetime(rows["end_date"])
