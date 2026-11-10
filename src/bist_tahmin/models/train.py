@@ -8,12 +8,12 @@ Sizinti kurali (ASLI KORUMA): `as_of` gununde etiketi henuz bilinmeyen hicbir sa
 - NaN/sonsuz ozellik ya da NaN etiket satirlari dusurulur; tek sinifli ya da az (< MIN_TRAIN_ROWS) satirda
   ValueError verilir (uydurma yok).
 
-Sinama kumesi (holdout) notu: backtest laboratuvari holdout_start sonrasini kilitler, cunku orada ARAYAN
-deneyler yapilir (deneme sisirmesi riski). Canli model ise NIHAI modeldir ve hakemi canli defterdir
-(ileriye donuk, degistirilemez); bu yuzden egitim holdout_start sonrasi gunleri de kullanabilir. Bu bilgi
-sizintisi degildir (as_of'ta bilinen veridir). Egitimde holdout donemi kullanildiysa
-`params.extra.train_includes_holdout` True yazilir: terfi kosulu 3 (sinama kumesi kaniti) o durumda
-holdout'u disarida birakan ayni spec'in laboratuvar sonucuyla (cagiranin verdigi `holdout_result`) verilmelidir.
+Sinama kumesi (holdout) kurali: `holdout_start` ve sonrasi VARSAYILAN olarak egitimin DISINDADIR. Bir satir
+yalnizca date < holdout_start VE end_date < holdout_start ise egitime girer (etiket penceresi de holdout'a
+tasmamali). holdout_start verilmezse ValueError verilir (sinir bilinmeden disarida tutma yapilamaz).
+Holdout'u bilerek egitime katmak icin `include_holdout=True` gerekir; bu durumda
+`params.extra.train_includes_holdout` True yazilir ve terfi kosulu 3 (sinama kumesi kaniti) o modeli KALDI
+verir.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ from .registry import ModelRecord, get_model, list_models, register_model
 
 MIN_TRAIN_ROWS = 500
 EXPERIMENT_FAMILY = "model-train"  # asil deney ailelerinden ayri: Bonferroni deneme sayisini sismesin
+CHALLENGER_ROLE = "challenger"     # egitim yalnizca challenger kaydeder; champion atamasi yalniz promote ile
 
 
 def _as_day(d, name: str) -> pd.Timestamp:
@@ -48,6 +49,19 @@ def _check_days(purge_days, horizon_days) -> tuple[int, int]:
     if purge_days < horizon_days:
         raise ValueError(f"purge_days ({purge_days}) horizon_days ({horizon_days}) degerinden kucuk olamaz (sizinti)")
     return int(purge_days), int(horizon_days)
+
+
+def _holdout_cut(holdout_start, include_holdout: bool) -> pd.Timestamp | None:
+    """Egitimden disarida tutulacak sinirin (holdout_start) gunu; include_holdout ise None (dislama yok).
+
+    holdout_start bilinmeden ve include_holdout=False iken ValueError: sinir olmadan sessiz bulasma olmaz.
+    """
+    if include_holdout:
+        return None
+    if holdout_start is None:
+        raise ValueError("holdout_start verilmeli: egitim sinama kumesini varsayilan olarak disarida tutar "
+                         "(bilerek dahil etmek icin include_holdout=True)")
+    return _as_day(holdout_start, "holdout_start")
 
 
 def _train_end(dates: pd.DatetimeIndex, as_of: pd.Timestamp, purge_days: int) -> pd.Timestamp | None:
@@ -67,8 +81,8 @@ def _prepare(frame: pd.DataFrame, spec: lab.ModelSpec) -> pd.DataFrame:
     return frame
 
 
-def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge_days: int
-            ) -> tuple[pd.DataFrame, pd.Timestamp | None]:
+def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge_days: int,
+            excl_from: pd.Timestamp | None) -> tuple[pd.DataFrame, pd.Timestamp | None]:
     f = _prepare(frame, spec)
     dates = pd.to_datetime(f["date"])
     ends = pd.to_datetime(f["end_date"])
@@ -76,6 +90,8 @@ def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge
     if train_end is None:
         return f.iloc[0:0].copy(), None
     mask = ((dates <= train_end) & (ends <= as_of)).to_numpy()  # NaT -> False
+    if excl_from is not None:  # holdout: satir ve etiket penceresi sinirin ONCESINDE bitmeli
+        mask = mask & (dates < excl_from).to_numpy() & (ends < excl_from).to_numpy()
     if spec.window == "rolling" and mask.any():
         uniq = dates[mask].drop_duplicates().sort_values()
         cutoff = uniq.iloc[-int(spec.rolling_days):].iloc[0]
@@ -93,11 +109,16 @@ def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge
 
 
 def training_rows(
-    frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, *, purge_days: int, horizon_days: int
+    frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, *, purge_days: int, horizon_days: int,
+    holdout_start=None, include_holdout: bool = False,
 ) -> pd.DataFrame:
-    """as_of anindaki egitim satirlari: date <= train_end VE end_date <= as_of; NaN etiket/ozellik dusurulur."""
+    """as_of anindaki egitim satirlari: date <= train_end VE end_date <= as_of; NaN etiket/ozellik dusurulur.
+
+    holdout_start verilirse (include_holdout=False iken zorunlu) sinama kumesi satirlari disarida kalir.
+    """
     purge_days, horizon_days = _check_days(purge_days, horizon_days)
-    rows, _ = _select(frame, spec, _as_day(as_of, "as_of"), purge_days)
+    excl = _holdout_cut(holdout_start, include_holdout)
+    rows, _ = _select(frame, spec, _as_day(as_of, "as_of"), purge_days, excl)
     return rows
 
 
@@ -109,11 +130,18 @@ def train_model(
     horizon_days: int,
     purge_days: int,
     seed: int = 0,
+    holdout_start=None,
+    include_holdout: bool = False,
 ) -> tuple[dict, pd.Timestamp, int]:
-    """(params_json, train_end, n_rows). Tek sinifli ya da az (< MIN_TRAIN_ROWS) satirda ValueError."""
+    """(params_json, train_end, n_rows). Tek sinifli ya da az (< MIN_TRAIN_ROWS) satirda ValueError.
+
+    holdout_start: sinama kumesi siniri (varsayilan disarida). include_holdout=True ile holdout bilerek
+    egitime katilir ve params.extra.train_includes_holdout=True yazilir.
+    """
     purge_days, horizon_days = _check_days(purge_days, horizon_days)
     as_of = _as_day(as_of, "as_of")
-    rows, train_end = _select(frame, spec, as_of, purge_days)
+    excl = _holdout_cut(holdout_start, include_holdout)
+    rows, train_end = _select(frame, spec, as_of, purge_days, excl)
     if train_end is None:
         raise ValueError(f"as_of ({as_of.date()}) oncesinde purge_days ({purge_days}) kadar gun yok: egitilemez")
     n = len(rows)
@@ -122,6 +150,13 @@ def train_model(
     # ikinci savunma hatti: etiketi as_of'ta bilinmeyen satir asla bulunmamali
     if not (rows["end_date"] <= as_of).all() or not (rows["date"] <= train_end).all():
         raise AssertionError("egitim satiri as_of/train_end sinirini asiyor (sizinti)")
+    hs = None if holdout_start is None else _as_day(holdout_start, "holdout_start")
+    if excl is not None:
+        if not ((rows["date"] < excl).all() and (rows["end_date"] < excl).all()):
+            raise AssertionError("egitim satiri sinama kumesine (holdout) sizdi")
+        includes_holdout = False
+    else:  # bilerek dahil: gercekten holdout satiri var mi (holdout_start bilinmiyorsa dogrulanamaz -> True)
+        includes_holdout = True if hs is None else bool(((rows["date"] >= hs) | (rows["end_date"] >= hs)).any())
     y = rows[spec.label].to_numpy(dtype=float)
     if np.unique(y).size < 2:
         raise ValueError("egitim etiketi tek sinifli: model egitilemez")
@@ -138,6 +173,9 @@ def train_model(
         "train_base_rate": float(y.mean()),
         "seed": int(seed),
         "sklearn_version": sklearn.__version__,
+        "holdout_start": None if hs is None else hs.date().isoformat(),
+        "include_holdout": bool(include_holdout),
+        "train_includes_holdout": bool(includes_holdout),
     }
     params = logreg.fit_logreg(
         rows[list(spec.feature_list)].to_numpy(dtype=float), y, spec.feature_list,
@@ -154,11 +192,14 @@ def train_and_register(
     as_of: pd.Timestamp,
     *,
     version_prefix: str = "logreg",
-    role: str = "challenger",
     seed: int = 0,
+    include_holdout: bool = False,
 ) -> ModelRecord:
-    """Egitir ve `models`e kaydeder. version = f"{prefix}_{spec.name}@{as_of:%Y-%m-%d}".
+    """Egitir ve `models`e CHALLENGER olarak kaydeder. version = f"{prefix}_{spec.name}@{as_of:%Y-%m-%d}".
 
+    Champion bu fonksiyonla atanamaz (yalniz registry.promote). Sinama kumesi cfg['holdout']['holdout_start']
+    ile varsayilan olarak disarida tutulur; include_holdout=True ile bilerek dahil edilirse kayitta
+    train_includes_holdout=True olur ve terfi bu modeli sinama kosulunda reddeder.
     Ayni version varsa egitimden ONCE ValueError (ezme yok). Veri seti as_of gununu kapsamiyorsa ValueError
     (eski veri seti ile sessizce egitilmez). Kayit + `experiments` satiri (aile 'model-train') tek islemdedir.
     """
@@ -179,9 +220,9 @@ def train_and_register(
         raise ValueError(f"model zaten kayitli: {version}")
 
     params, train_end, n_rows = train_model(
-        ds.frame, spec, as_of, horizon_days=horizon, purge_days=purge_days, seed=seed)
+        ds.frame, spec, as_of, horizon_days=horizon, purge_days=purge_days, seed=seed,
+        holdout_start=(cfg.get("holdout") or {}).get("holdout_start"), include_holdout=include_holdout)
     extra = params["extra"]
-    holdout_start = (cfg.get("holdout") or {}).get("holdout_start")
     extra["feature_version"] = FEATURE_VERSION
     extra["dataset"] = {
         "feature_version": ds_fv,
@@ -191,19 +232,18 @@ def train_and_register(
         "built_at": (ds.meta or {}).get("built_at"),
     }
     extra["version_prefix"] = version_prefix
-    if holdout_start is not None:
-        extra["holdout_start"] = str(holdout_start)
-        extra["train_includes_holdout"] = bool(pd.Timestamp(extra["train_date_max"]) >= pd.Timestamp(holdout_start))
 
     now = dt.datetime.now(dt.timezone.utc)
     with conn.transaction():
-        rec = register_model(conn, version, params, train_end.date(), role=role, trained_at=now)
+        rec = register_model(conn, version, params, train_end.date(), role=CHALLENGER_ROLE, trained_at=now)
         exp_id = record_experiment(
             conn, EXPERIMENT_FAMILY, f"model egitimi: {version}",
-            {"version": version, "spec": spec.params(), "as_of": as_of.date().isoformat(), "role": role, "seed": seed},
+            {"version": version, "spec": spec.params(), "as_of": as_of.date().isoformat(),
+             "role": CHALLENGER_ROLE, "seed": seed, "include_holdout": bool(include_holdout)},
             created_at=now,
         )
-        update_result(conn, exp_id, {"version": version, "n_rows": n_rows, "train_end": train_end.date().isoformat()})
+        update_result(conn, exp_id, {"version": version, "n_rows": n_rows, "train_end": train_end.date().isoformat(),
+                                     "train_includes_holdout": extra["train_includes_holdout"]})
     return rec
 
 

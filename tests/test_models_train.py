@@ -1,4 +1,4 @@
-"""models.train: purge'lu egitim satirlari, sizintisizlik kaniti, kayit ve yeniden egitim zamani."""
+"""models.train: purge'lu egitim satirlari, sizintisizlik kaniti, holdout disarida tutma, kayit ve yeniden egitim zamani."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ TICKERS = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]
 N_DAYS = 260
 DAYS = pd.bdate_range("2024-01-01", periods=N_DAYS)
 SPEC = lab.ModelSpec(name="t1", features=FEATS, C=1.0)
+HOLD = pd.Timestamp(CFG["holdout"]["holdout_start"])  # 2026-05-01: veri setinin tamamindan sonra
 
 
 def make_frame(seed=0, n_days=N_DAYS) -> pd.DataFrame:
@@ -59,7 +60,7 @@ TRAIN_END = DAYS[195]
 
 def test_training_rows_boundaries():
     f = make_frame()
-    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H)
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
     assert rows["date"].max() == TRAIN_END
     assert (rows["end_date"] <= AS_OF).all()
     assert len(rows) == 196 * len(TICKERS)
@@ -71,19 +72,19 @@ def test_training_rows_drops_nan_label_and_features():
     f.loc[f.index[10], "ret_1_z"] = np.nan
     f.loc[f.index[11], "ret_5_z"] = np.inf
     f.loc[f.index[12], "label_up"] = np.nan
-    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H)
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
     assert len(rows) == 196 * len(TICKERS) - 3
 
 
 def test_purge_shorter_than_horizon_rejected():
     f = make_frame()
     with pytest.raises(ValueError, match="sizinti"):
-        train.training_rows(f, SPEC, AS_OF, purge_days=3, horizon_days=H)
+        train.training_rows(f, SPEC, AS_OF, purge_days=3, horizon_days=H, holdout_start=HOLD)
 
 
 def test_label_known_only_rows_even_with_larger_purge():
     f = make_frame()
-    rows = train.training_rows(f, SPEC, AS_OF, purge_days=8, horizon_days=H)
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=8, horizon_days=H, holdout_start=HOLD)
     assert rows["date"].max() == DAYS[192]
     assert (rows["end_date"] <= AS_OF).all()
 
@@ -91,12 +92,12 @@ def test_label_known_only_rows_even_with_larger_purge():
 def test_missing_column_rejected():
     f = make_frame().drop(columns=["ret_5_z"])
     with pytest.raises(ValueError, match="eksik"):
-        train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H)
+        train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
 
 
 def test_changing_anything_after_as_of_does_not_change_model():
     f = make_frame()
-    base, te, n = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5)
+    base, te, n = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
     assert te == TRAIN_END and n == 196 * len(TICKERS)
 
     g = f.copy()
@@ -110,51 +111,94 @@ def test_changing_anything_after_as_of_does_not_change_model():
         g.loc[mask, "label_rel_up"] = 1.0
         g.loc[mask, "fwd_ret"] = 123.0
         g.loc[mask, "tradable_ret"] = -9.0
-    changed, te2, n2 = train.train_model(g, SPEC, AS_OF, horizon_days=H, purge_days=5)
+    changed, te2, n2 = train.train_model(g, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
     assert (te2, n2) == (te, n) and _params_eq(base, changed)
 
     # duyarlilik kontrolu: bilinen bir egitim satirinin etiketi degisirse model DEGISIR
     h = f.copy()
     known = h.index[h["date"] <= TRAIN_END][:200]
     h.loc[known, "label_up"] = 1.0 - h.loc[known, "label_up"]
-    other, _, _ = train.train_model(h, SPEC, AS_OF, horizon_days=H, purge_days=5)
+    other, _, _ = train.train_model(h, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
     assert not _params_eq(base, other)
 
 
 def test_train_model_learns_signal_and_params_are_json():
-    params, _, _ = train.train_model(make_frame(), SPEC, AS_OF, horizon_days=H, purge_days=5, seed=4)
+    params, _, _ = train.train_model(make_frame(), SPEC, AS_OF, horizon_days=H, purge_days=5, seed=4,
+                                     holdout_start=HOLD)
     assert params["features"] == FEATS and params["label"] == "label_up" and params["C"] == 1.0
     assert params["coef"][0] > 0.5                                  # ret_1_z gercek sinyal
     ex = params["extra"]
     assert ex["spec"]["name"] == "t1" and ex["as_of"] == str(AS_OF.date()) and ex["seed"] == 4
     assert ex["train_end"] == str(TRAIN_END.date()) and ex["purge_days"] == 5
+    assert ex["holdout_start"] == "2026-05-01" and ex["include_holdout"] is False
+    assert ex["train_includes_holdout"] is False
     json.dumps(params, allow_nan=False)
 
 
 def test_too_few_rows_and_single_class_raise():
     f = make_frame()
     with pytest.raises(ValueError, match="yetersiz"):
-        train.train_model(f, SPEC, DAYS[50], horizon_days=H, purge_days=5)
+        train.train_model(f, SPEC, DAYS[50], horizon_days=H, purge_days=5, holdout_start=HOLD)
     with pytest.raises(ValueError, match="gun yok"):
-        train.train_model(f, SPEC, DAYS[2], horizon_days=H, purge_days=5)
+        train.train_model(f, SPEC, DAYS[2], horizon_days=H, purge_days=5, holdout_start=HOLD)
     g = f.copy()
     g["label_up"] = g["label_up"].where(g["label_up"].isna(), 1.0)
     with pytest.raises(ValueError, match="tek sinif"):
-        train.train_model(g, SPEC, AS_OF, horizon_days=H, purge_days=5)
+        train.train_model(g, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
 
 
 def test_rolling_window_limits_training_days():
     f = make_frame()
     spec = lab.ModelSpec(name="r", features=FEATS, window="rolling", rolling_days=100)
-    rows = train.training_rows(f, spec, AS_OF, purge_days=5, horizon_days=H)
+    rows = train.training_rows(f, spec, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
     assert rows["date"].nunique() == 100 and rows["date"].max() == TRAIN_END
 
 
 def test_rel_label_spec_uses_rel_label():
     f = make_frame()
     spec = lab.ModelSpec(name="rel", label="label_rel_up", features=FEATS)
-    params, _, _ = train.train_model(f, spec, AS_OF, horizon_days=H, purge_days=5)
+    params, _, _ = train.train_model(f, spec, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
     assert params["label"] == "label_rel_up"
+
+
+# ---------------------------------------------------------------- sinama kumesi (holdout) disarida
+
+def test_holdout_rows_excluded_by_default():
+    """holdout_start = DAYS[180]: egitim satiri hem tarihi hem etiket bitisi holdout oncesinde olmali.
+    date <= 174 -> end (date+5) <= 179 < 180. Tarihi 175..179 olanlarin etiketi holdout'a tasar -> disarida."""
+    f = make_frame()
+    hs = DAYS[180]
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=hs)
+    assert rows["date"].max() == DAYS[174]
+    assert (rows["date"] < hs).all() and (rows["end_date"] < hs).all()
+    assert len(rows) == 175 * len(TICKERS)
+    params, te, n = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=hs)
+    assert n == 175 * len(TICKERS) and params["extra"]["train_includes_holdout"] is False
+    assert params["extra"]["train_date_max"] == str(DAYS[174].date())
+
+
+def test_include_holdout_uses_full_window_and_flags_it():
+    f = make_frame()
+    hs = DAYS[180]
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=hs,
+                               include_holdout=True)
+    assert rows["date"].max() == TRAIN_END and len(rows) == 196 * len(TICKERS)
+    params, _, _ = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=hs,
+                                     include_holdout=True)
+    assert params["extra"]["train_includes_holdout"] is True
+    assert params["extra"]["include_holdout"] is True
+
+
+def test_holdout_start_is_required_unless_explicitly_included():
+    """Sinir bilinmeden disarida tutma yapilamaz: fail-closed."""
+    f = make_frame()
+    with pytest.raises(ValueError, match="holdout_start"):
+        train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H)
+    with pytest.raises(ValueError, match="holdout_start"):
+        train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5)
+    # acikca dahil edilirse sinir gerekmez
+    rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, include_holdout=True)
+    assert len(rows) == 196 * len(TICKERS)
 
 
 # ---------------------------------------------------------------- DB
@@ -185,7 +229,8 @@ def test_train_and_register_roundtrip(db):
     assert ex["feature_version"] == FEATURE_VERSION and ex["dataset"]["date_max"] == str(DAYS[-1].date())
     assert ex["spec"]["C"] == 1.0 and ex["holdout_start"] == "2026-05-01" and ex["train_includes_holdout"] is False
     # DB'den okunan params ile tahmin, yerel egitimle ayni
-    local, _, _ = train.train_model(make_frame(), SPEC, AS_OF, horizon_days=H, purge_days=5, seed=2)
+    local, _, _ = train.train_model(make_frame(), SPEC, AS_OF, horizon_days=H, purge_days=5, seed=2,
+                                    holdout_start=HOLD)
     df = make_frame().iloc[:50]
     assert np.max(np.abs(logreg.predict_frame(rec.params, df) - logreg.predict_frame(local, df))) < 1e-12
     n = db.execute("SELECT count(*) FROM experiments WHERE family = %s AND result_json IS NOT NULL",
@@ -193,15 +238,30 @@ def test_train_and_register_roundtrip(db):
     assert n == 1
 
 
-def test_train_and_register_duplicate_and_prefix_role(db):
+def test_train_and_register_duplicate_and_prefix(db):
     ds = make_ds()
     train.train_and_register(db, CFG, ds, SPEC, AS_OF)
     with pytest.raises(ValueError, match="zaten kayitli"):
         train.train_and_register(db, CFG, ds, SPEC, AS_OF)
-    rec = train.train_and_register(db, CFG, ds, SPEC, AS_OF, version_prefix="lr2", role="champion")
-    assert rec.version.startswith("lr2_t1@") and rec.role == "champion"
+    rec = train.train_and_register(db, CFG, ds, SPEC, AS_OF, version_prefix="lr2")
+    assert rec.version.startswith("lr2_t1@") and rec.role == "challenger"
     # basarisiz kayit deney satiri birakmaz
     assert db.execute("SELECT count(*) FROM experiments").fetchone()[0] == 2
+
+
+def test_train_and_register_cannot_register_champion(db):
+    """Egitim yalnizca challenger kaydeder; role parametresi kaldirildi (champion atamasi yalniz promote ile)."""
+    with pytest.raises(TypeError):
+        train.train_and_register(db, CFG, make_ds(), SPEC, AS_OF, role="champion")
+    assert reg.list_models(db) == []
+
+
+def test_train_and_register_requires_holdout_boundary(db):
+    cfg = copy.deepcopy(CFG)
+    cfg["holdout"] = {}
+    with pytest.raises(ValueError, match="holdout_start"):
+        train.train_and_register(db, cfg, make_ds(), SPEC, AS_OF)
+    assert reg.list_models(db) == []
 
 
 def test_train_and_register_rejects_stale_or_mismatched_dataset(db):
@@ -218,10 +278,18 @@ def test_train_and_register_rejects_stale_or_mismatched_dataset(db):
 
 
 def test_train_includes_holdout_flag(db):
+    """Varsayilan: sinama kumesi (holdout_start) egitimin disinda; bayrak False ve egitim penceresi sinirin altinda."""
     cfg = copy.deepcopy(CFG)
     cfg["holdout"]["holdout_start"] = str(DAYS[100].date())
     rec = train.train_and_register(db, cfg, make_ds(), SPEC, AS_OF)
-    assert rec.params["extra"]["train_includes_holdout"] is True
+    ex = rec.params["extra"]
+    assert ex["train_includes_holdout"] is False
+    assert ex["holdout_start"] == str(DAYS[100].date())
+    assert pd.Timestamp(ex["train_date_max"]) < DAYS[100]
+    # bilerek dahil edilirse bayrak True (promote bu modeli sinama kosulunda reddeder)
+    inc = train.train_and_register(db, cfg, make_ds(), SPEC, AS_OF, version_prefix="inc", include_holdout=True)
+    assert inc.params["extra"]["train_includes_holdout"] is True
+    assert pd.Timestamp(inc.params["extra"]["train_date_max"]) == TRAIN_END
 
 
 def test_due_for_retrain(db):

@@ -1,5 +1,7 @@
 """models.promote: Bolum 11 karar kurali. Sentetik CANLI defter (dogrudan INSERT + cozum UPDATE) uzerinde:
-kasitli kotu challenger reddedilir; iyi challenger yalniz TUM kosullar saglaninca onaylanir."""
+kasitli kotu challenger reddedilir; iyi challenger yalniz TUM kosullar saglaninca onaylanir.
+Referans her zaman baseline_base_rate_v1; champion yalniz bilgi amacli. Sinama kosulu holdout'u disarida
+tutmus ve ayni spec'ten bir challenger ister. Canli golge kosulu gun sayisina ek olarak iyilesme ister."""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import psycopg
 import pytest
 from conftest import APP_PASSWORD
 
+from bist_tahmin.backtest import lab
 from bist_tahmin.config import load_config
 from bist_tahmin.db import APP_ROLE, run_init, with_overrides
 from bist_tahmin.models import promote as pr
@@ -21,8 +24,14 @@ from bist_tahmin.models import registry as reg
 CFG = load_config("config/default.yaml")
 TICKERS = [f"T{i:02d}" for i in range(10)]
 N_DAYS = 80
+FEATS_P = ["ret_1_z", "ret_5_z", "mkt_ret_1"]
+SPEC_P = lab.ModelSpec(name="p", features=FEATS_P, C=1.0)
+SPEC_OTHER = lab.ModelSpec(name="p", features=FEATS_P, C=0.5)     # ayni ad, farkli parametre
+SPEC_REL = lab.ModelSpec(name="rel", label="label_rel_up", features=FEATS_P)
+BASE = pr.BASELINE_REFERENCE
 GOOD_HOLDOUT = {"main": {"model_better": True, "excludes_zero": True, "diff": -0.02, "lo": -0.03, "hi": -0.01,
-                         "n_dates": 120}, "n_dates": 120, "sufficient": True}
+                         "n_dates": 120}, "n_dates": 120, "sufficient": True,
+                "run_info": {"spec": SPEC_P.params()}}
 INS = ("INSERT INTO predictions (ticker, made_at, horizon_days, prob_up, score, model_version, model_role,"
        " feature_hash, features_json, created_at) VALUES (%s, %s, 5, %s, %s, %s, %s, 'h', '{}'::jsonb, now())")
 UPD = ("UPDATE predictions SET resolved_at = %s, realized_ret = %s, realized_rel_ret = %s, tradable_ret = %s,"
@@ -38,6 +47,14 @@ def db(admin_conninfo):
         yield conn
 
 
+def _reg(conn, version, spec=SPEC_P, *, include_holdout=False):
+    """Challenger kaydi (egitim meta verisi). Zaten varsa dokunmaz."""
+    if reg.get_model(conn, version) is not None:
+        return
+    extra = {"spec": spec.params(), "train_includes_holdout": include_holdout, "holdout_start": "2026-05-01"}
+    reg.register_model(conn, version, {"label": spec.label, "extra": extra}, dt.date(2023, 12, 1))
+
+
 class Book:
     """Sentetik defter: gizli sinyal s; gercek yukselis olasiligi p = 0.5 + 0.3 tanh(s)."""
 
@@ -49,7 +66,10 @@ class Book:
         self.y = {k: float(rng.random() < p) for k, p in self.p.items()}
         self.ret = {k: 0.02 * (2 * y - 1) + rng.normal(0, 0.004) for k, y in self.y.items()}
 
-    def write(self, conn, version, prob_fn, role="challenger", days=None, resolve=True):
+    def write(self, conn, version, prob_fn, role="challenger", days=None, resolve=True, spec=SPEC_P,
+              include_holdout=False):
+        if role == "challenger":  # challenger her zaman kayitli olur (promote kaydi gerektirir)
+            _reg(conn, version, spec, include_holdout=include_holdout)
         days = self.days if days is None else days
         keys = [(t, d) for d in days for t in TICKERS]
         conn.cursor().executemany(INS, [(t, d, float(prob_fn(t, d)), None, version, role) for t, d in keys])
@@ -91,7 +111,7 @@ def book():
 
 @pytest.fixture()
 def ledger(db, book):
-    book.write(db, pr.BASELINE_REFERENCE, _const(0.5), role="baseline")
+    book.write(db, BASE, _const(0.5), role="baseline")
     return db
 
 
@@ -102,8 +122,8 @@ def test_good_challenger_approved_only_when_all_conditions_hold(ledger, book):
     dec = pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT)
     assert dec.approved, pr.format_decision(dec)
     assert [c.name for c in dec.checks] == list(pr.CHECK_NAMES) and all(c.ok for c in dec.checks)
-    assert dec.reference == pr.BASELINE_REFERENCE and dec.challenger == "good"
-    assert dec.summary.startswith("ONAY")
+    assert dec.reference == BASE and dec.challenger == "good"
+    assert dec.summary.startswith("ONAY") and dec.info == []
     # her kosulun detail'i sayi icerir
     assert "80" in dec.checks[0].detail and "[" in dec.checks[1].detail
 
@@ -128,7 +148,7 @@ def test_deliberately_bad_challengers_are_rejected_with_reasons(ledger, book):
 
 def test_too_few_days_rejected(db, book):
     days = book.days[:30]
-    book.write(db, pr.BASELINE_REFERENCE, _const(0.5), role="baseline", days=days)
+    book.write(db, BASE, _const(0.5), role="baseline", days=days)
     book.write(db, "good", _good(book), days=days)
     dec = pr.promote_check(db, CFG, "good", holdout_result=GOOD_HOLDOUT)
     assert not dec.approved
@@ -145,13 +165,18 @@ def test_missing_holdout_rejected(ledger, book):
 
 def test_failed_or_noisy_holdout_rejected(ledger, book):
     book.write(ledger, "good", _good(book))
-    worse = {"main": {"model_better": False, "excludes_zero": True, "diff": 0.01, "lo": 0.005, "hi": 0.02}}
+    worse = {**GOOD_HOLDOUT, "main": {**GOOD_HOLDOUT["main"], "model_better": False, "excludes_zero": True,
+                                      "diff": 0.01, "lo": 0.005, "hi": 0.02}}
     assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=worse)) == {pr.CHECK_HOLDOUT}
-    not_sig = {"main": {"model_better": False, "excludes_zero": False, "diff": -0.001}}
+    not_sig = {**GOOD_HOLDOUT, "main": {**GOOD_HOLDOUT["main"], "model_better": False, "excludes_zero": False,
+                                        "diff": -0.001}}
     assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=not_sig)) == {pr.CHECK_HOLDOUT}
     insufficient = {**GOOD_HOLDOUT, "sufficient": False}
     assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=insufficient)) == {pr.CHECK_HOLDOUT}
-    assert failed(pr.promote_check(ledger, CFG, "good", holdout_result={"main": None})) == {pr.CHECK_HOLDOUT}
+    no_main = {**GOOD_HOLDOUT, "main": None}
+    assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=no_main)) == {pr.CHECK_HOLDOUT}
+    # saglam kanit tek basina yeterli: ayni challenger icin GOOD_HOLDOUT geciyor
+    assert pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT).approved
 
 
 def test_holdout_skipped_when_not_required(ledger, book):
@@ -162,6 +187,38 @@ def test_holdout_skipped_when_not_required(ledger, book):
     assert dec.approved and "atlandi" in dec.checks[2].detail
 
 
+# ---------------------------------------------------------------- K1: sinama kumesi butunlugu
+
+def test_holdout_including_training_is_rejected(ledger, book):
+    """Holdout'u egitime katmis challenger: kanit ne kadar iyi olursa olsun kosul 3 KALDI."""
+    book.write(ledger, "dirty", _good(book), include_holdout=True)
+    dec = pr.promote_check(ledger, CFG, "dirty", holdout_result=GOOD_HOLDOUT)
+    assert not dec.approved and failed(dec) == {pr.CHECK_HOLDOUT}
+    assert "train_includes_holdout=true" in dec.checks[2].detail
+
+
+def test_holdout_result_spec_must_match_challenger(ledger, book):
+    book.write(ledger, "good", _good(book))
+    other_spec = {**GOOD_HOLDOUT, "run_info": {"spec": SPEC_OTHER.params()}}
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=other_spec)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "uyusmuyor" in dec.checks[2].detail
+    no_spec = {k: v for k, v in GOOD_HOLDOUT.items() if k != "run_info"}
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=no_spec)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "spec bilgisi yok" in dec.checks[2].detail
+
+
+def test_challenger_without_training_record_rejected(ledger, book):
+    """Egitim meta verisi olmayan (ya da holdout disarida tutuldugu kaydedilmemis) challenger kanitsiz kalir."""
+    reg.register_model(ledger, "legacy", {"label": "label_up"}, dt.date(2023, 12, 1))
+    book.write(ledger, "legacy", _good(book))  # kayit zaten var: dokunulmaz
+    dec = pr.promote_check(ledger, CFG, "legacy", holdout_result=GOOD_HOLDOUT)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "dogrulanamadi" in dec.checks[2].detail
+    dec = pr.promote_check(ledger, CFG, "unregistered_x", holdout_result=GOOD_HOLDOUT)
+    assert pr.CHECK_HOLDOUT in failed(dec) and "dogrulanamadi" in dec.checks[2].detail
+
+
+# ---------------------------------------------------------------- O2: canli golge iyilesmesi
+
 def test_live_shadow_days_condition(ledger, book):
     book.write(ledger, "good", _good(book))
     cfg = copy.deepcopy(CFG)
@@ -169,6 +226,21 @@ def test_live_shadow_days_condition(ledger, book):
     dec = pr.promote_check(ledger, cfg, "good", holdout_result=GOOD_HOLDOUT)
     assert not dec.approved and failed(dec) == {pr.CHECK_SHADOW}
     assert "80" in dec.checks[3].detail and "81" in dec.checks[3].detail
+
+
+def test_shadow_days_alone_are_not_enough(ledger, book):
+    """Gun sayisi yeterli (80 >= 60) ama canli golgede baz orana karsi iyilesme yok -> canli_golge KALDI."""
+    book.write(ledger, "rnd", _random())
+    dec = pr.promote_check(ledger, CFG, "rnd", holdout_result=GOOD_HOLDOUT)
+    assert dec.checks[0].ok and pr.CHECK_SHADOW in failed(dec)
+    assert "iyilesme yok" in dec.checks[3].detail
+    assert not dec.approved
+
+
+def test_good_challenger_shadow_improvement_passes(ledger, book):
+    book.write(ledger, "good", _good(book))
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT)
+    assert dec.checks[3].ok and "iyilesme var" in dec.checks[3].detail
 
 
 def test_net_return_condition(ledger, book):
@@ -187,27 +259,34 @@ def test_brier_improvement_threshold(ledger, book):
     assert failed(dec) == {pr.CHECK_BRIER}
 
 
-def test_champion_as_reference(db, book):
-    book.write(db, "champ", _weak(book), role="champion")
+# ---------------------------------------------------------------- O1: referans her zaman baz oran
+
+def test_champion_is_information_only_reference_stays_baseline(ledger, book):
+    db = ledger
+    book.write(db, "champ", _weak(book))
+    reg.promote(db, "champ")
     book.write(db, "strong", _good(book))
-    book.write(db, "strong_clone", _good(book))
     dec = pr.promote_check(db, CFG, "strong", "champ", holdout_result=GOOD_HOLDOUT, cost_bps=5)
-    assert dec.reference == "champ"
-    brier = dec.checks[1]
-    # champion zayif ama ayni yonde: Brier farki negatif olmali; esik 0.005 asilmayabilir, sonuc detail'de
-    assert "Brier farki" in brier.detail
-    # kendi kendine karsilastirma ve esit modeller reddedilir
+    assert dec.reference == BASE, pr.format_decision(dec)
+    assert dec.approved, pr.format_decision(dec)
+    assert len(dec.info) == 1 and "BILGI AMACLI" in dec.info[0] and "champion 'champ'" in dec.info[0]
+    assert [c.name for c in dec.checks] == list(pr.CHECK_NAMES)
+    assert "Bilgi (karar disi)" in pr.format_decision(dec)
+    # kendi kendine karsilastirma hala reddedilir
     with pytest.raises(ValueError):
         pr.promote_check(db, CFG, "strong", "strong")
-    dup = pr.promote_check(db, CFG, "strong", "strong_clone", holdout_result=GOOD_HOLDOUT)
-    assert not dup.approved and pr.CHECK_BRIER in failed(dup) and pr.CHECK_NET in failed(dup)
 
 
-def test_challenger_not_better_than_strong_champion_rejected(db, book):
-    book.write(db, "champ", _good(book), role="champion")
-    book.write(db, "weak", _weak(book))
-    dec = pr.promote_check(db, CFG, "weak", "champ", holdout_result=GOOD_HOLDOUT)
-    assert not dec.approved and {pr.CHECK_BRIER, pr.CHECK_NET} <= failed(dec)
+def test_better_than_champion_but_worse_than_base_rate_is_rejected(ledger, book):
+    """Champion'dan iyi ama baz orandan kotu challenger REDDEDILIR (eski davranis onaylardi)."""
+    db = ledger
+    book.write(db, "champ", _const(0.9))
+    reg.promote(db, "champ")
+    book.write(db, "rnd", _random())
+    dec = pr.promote_check(db, CFG, "rnd", "champ", holdout_result=GOOD_HOLDOUT)
+    assert dec.reference == BASE
+    assert not dec.approved and pr.CHECK_BRIER in failed(dec)
+    assert "daha iyi" in dec.info[0]  # champion'dan iyi (bilgi), ama karar baz orana gore
 
 
 def test_empty_ledger_does_not_crash(db):
@@ -249,11 +328,9 @@ def test_cost_resolution():
 
 def test_promotion_flow_with_registry(db, book):
     """Uctan uca: onay alinca registry.promote champion'u degistirir; red alinca degismez."""
-    book.write(db, pr.BASELINE_REFERENCE, _const(0.5), role="baseline")
+    book.write(db, BASE, _const(0.5), role="baseline")
     book.write(db, "good", _good(book))
     book.write(db, "rnd", _random())
-    for v in ("good", "rnd"):
-        reg.register_model(db, v, {"label": "label_up"}, dt.date(2023, 12, 1))
     bad = pr.promote_check(db, CFG, "rnd", holdout_result=GOOD_HOLDOUT)
     assert not bad.approved
     ok = pr.promote_check(db, CFG, "good", holdout_result=GOOD_HOLDOUT)
@@ -263,7 +340,6 @@ def test_promotion_flow_with_registry(db, book):
 
 
 def test_rel_label_model_gets_note(ledger, book):
-    book.write(ledger, "rel", _good(book))
-    reg.register_model(ledger, "rel", {"label": "label_rel_up"}, dt.date(2023, 12, 1))
+    book.write(ledger, "rel", _good(book), spec=SPEC_REL)
     dec = pr.promote_check(ledger, CFG, "rel", holdout_result=GOOD_HOLDOUT)
     assert "label_rel_up" in dec.checks[1].detail

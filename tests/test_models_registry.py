@@ -58,7 +58,7 @@ def test_register_validation(db):
     with pytest.raises(ValueError):
         reg.register_model(conn, "", {}, END)
     with pytest.raises(ValueError, match="rolu"):
-        reg.register_model(conn, "x", {}, END, role="retired")
+        reg.register_model(conn, "x", {}, END, role="bogus")
     with pytest.raises(ValueError, match="JSON"):
         reg.register_model(conn, "x", {"a": float("nan")}, END)
     with pytest.raises(ValueError, match="tz-aware"):
@@ -132,12 +132,46 @@ def test_retire_champion_leaves_no_champion(db):
     assert reg.promote(conn, "c2").role == "champion"
 
 
-def test_register_champion_only_when_none_exists(db):
+def test_register_champion_is_rejected_even_when_none_exists(db):
+    """Champion yalniz promote ile atanir: kayit yolu champion'i hic yazmaz (champion yokken bile)."""
     conn, _ = db
-    assert _reg(conn, "first", role="champion").role == "champion"
-    with pytest.raises(ValueError, match="champion"):
+    with pytest.raises(ValueError, match="promote"):
+        _reg(conn, "first", role="champion")
+    _reg(conn, "c1")
+    with pytest.raises(ValueError, match="promote"):
         _reg(conn, "second", role="champion")
-    assert list(_roles(conn)) == ["first"]
+    assert _roles(conn) == {"c1": "challenger"}
+    assert reg.promote(conn, "c1").role == "champion"
+
+
+def test_register_retired_is_accepted_and_inactive(db):
+    conn, _ = db
+    assert _reg(conn, "old", role="retired").role == "retired"
+    assert reg.load_active_models(conn) == []
+    assert _roles(conn) == {"old": "retired"}
+
+
+def test_promote_does_not_leave_champion_switch_open_in_caller_transaction(db):
+    """Cagiran dis islemde promote'tan sonra app.allow_promote 'off' kalmali: ham champion yazimi reddedilir."""
+    conn, _ = db
+    _reg(conn, "c1")
+    _reg(conn, "c2")
+    with conn.transaction():
+        reg.promote(conn, "c1")
+        reg.retire(conn, "c1")  # champion'i kaldir ki yalniz tetikleyici (GUC) engelleyebilsin
+        with pytest.raises(psycopg.errors.RestrictViolation):
+            with conn.transaction():  # savepoint
+                conn.execute("UPDATE models SET role = 'champion' WHERE version = 'c2'")
+    assert _roles(conn) == {"c1": "retired", "c2": "challenger"}
+
+
+def test_bist_app_champion_write_blocked_by_registry_path_and_db(db):
+    """Kayit yolu champion yazmaz; ham UPDATE de 007 tetikleyicisiyle reddedilir (ayrintili testler test_migration_007)."""
+    conn, _ = db
+    _reg(conn, "c1")
+    with pytest.raises(psycopg.errors.RestrictViolation):
+        conn.execute("UPDATE models SET role = 'champion' WHERE version = 'c1'")
+    assert _roles(conn) == {"c1": "challenger"}
 
 
 def test_other_fields_unchanged_by_lifecycle(db):

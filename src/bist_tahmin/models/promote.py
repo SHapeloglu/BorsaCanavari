@@ -1,16 +1,19 @@
 """Terfi kurali (PROJE.md Bolum 11 'Karar kurali'): bir challenger ancak 5 kosulun HEPSINI saglarsa onaylanir.
 
-Kanit CANLI defterden (predictions: cozulmus satirlar) gelir; challenger ve referans, ayni (ticker, made_at)
-satirlarinda eslestirilir. Referans = verilen champion version'u; champion None ise
-'baseline_base_rate_v1' (asil cita: gecmis yukselis orani).
+Kanit CANLI defterden (predictions: cozulmus satirlar) gelir. Brier/net/canli golge kosullarinda REFERANS her
+zaman 'baseline_base_rate_v1' (gecmis yukselis orani; PROJE.md Bolum 11 kosul 2). Champion verilirse yalnizca
+BILGI AMACLI karsilastirma yapilir (decision.info); karar kosullarini etkilemez.
 
 Kosullar (her birinin detail'i sayilari icerir; veri yetersizse ok=False ve nedeni yazilir, cokme yok):
   min_gun         eslesen FARKLI made_at gunu >= terfi.min_resolved_dates
-  brier           eslestirilmis blok bootstrap: Brier kaybi (challenger - referans) <= -min_improvement_brier VE
-                  Bonferroni'li aralik (ci = 1 - alpha/n_trials) sifiri dislar ve ust uc < 0
-  sinama_kumesi   holdout_result (lab.evaluate ciktisi) main.model_better ve excludes_zero; kanit yoksa ok=False
+  brier           baz orana karsi eslestirilmis blok bootstrap: Brier kaybi (challenger - baz) <= -min_improvement_brier
+                  VE Bonferroni'li aralik (ci = 1 - alpha/n_trials) sifiri dislar ve ust uc < 0
+  sinama_kumesi   holdout_result (lab.evaluate ciktisi): challenger egitimi holdout'u DISARIDA tutmus olmali
+                  (models.params_json.extra.train_includes_holdout == False), holdout_result.run_info.spec challenger'in
+                  extra.spec'i ile ayni olmali, main.model_better ve excludes_zero. Kanit yoksa ok=False
                   ('sinama kumesi kaniti yok'); terfi.require_holdout_pass False ise atlanir
-  canli_golge     challenger'in kendi cozulmus FARKLI made_at gunu >= terfi.require_live_shadow_days
+  canli_golge     challenger'in kendi cozulmus FARKLI made_at gunu >= terfi.require_live_shadow_days VE ayni
+                  eslesmis satirlarda baz orana karsi ortalama Brier farki < 0 (iyilesme)
   net_getiri      maliyet sonrasi benchmark'a gore net fazla getiri (kohort portfoyu, score=prob_up,
                   tradable_ret): challenger > referans + terfi.min_improvement_net_return
 
@@ -62,6 +65,7 @@ class PromotionDecision:
     reference: str
     checks: list[Check] = field(default_factory=list)
     summary: str = ""
+    info: list[str] = field(default_factory=list)  # karar DISI bilgi (ornegin champion karsilastirmasi)
 
 
 # ---------------------------------------------------------------- veri
@@ -78,6 +82,14 @@ def _load_resolved(conn, version: str, horizon_days: int) -> pd.DataFrame:
     for c in ("prob_up", "label_up", "tradable_ret"):
         df[c] = pd.to_numeric(df[c]).astype(float)
     return df
+
+
+def _load_params(conn, version: str) -> dict | None:
+    """models kaydinin params_json'u; kayit yoksa None."""
+    row = conn.execute("SELECT params_json FROM models WHERE version = %s", (version,)).fetchone()
+    if row is None:
+        return None
+    return dict(row[0] or {})
 
 
 def _resolve_cost(cfg: dict, cost_bps: float | None) -> tuple[float, str]:
@@ -135,12 +147,32 @@ def _check_brier(matched: pd.DataFrame, terfi: dict, alpha: float, n_trials: int
     return Check(CHECK_BRIER, ok, detail)
 
 
-def _check_holdout(holdout_result: dict | None, terfi: dict) -> Check:
+def _check_holdout(holdout_result: dict | None, terfi: dict, ch_params: dict | None) -> Check:
     if not bool(terfi.get("require_holdout_pass", True)):
         return Check(CHECK_HOLDOUT, True, "atlandi (terfi.require_holdout_pass=false)")
-    if holdout_result is None:
+    if holdout_result is None or not isinstance(holdout_result, dict):
         return Check(CHECK_HOLDOUT, False, "sinama kumesi kaniti yok")
-    main = holdout_result.get("main") if isinstance(holdout_result, dict) else None
+    # 1) challenger egitimi holdout'u disarida tutmus olmali (kayit yoksa ya da bayrak yoksa dogrulanamaz)
+    extra = (ch_params or {}).get("extra") or {}
+    if "train_includes_holdout" not in extra:
+        return Check(CHECK_HOLDOUT, False,
+                     "challenger egitim kaydi yok ya da holdout disarida tutuldugu dogrulanamadi "
+                     "(extra.train_includes_holdout eksik)")
+    if extra["train_includes_holdout"] is not False:
+        return Check(CHECK_HOLDOUT, False,
+                     "challenger egitimi sinama kumesini icerdi (train_includes_holdout=true): kanit gecersiz")
+    # 2) holdout sonucu ayni spec'ten olmali
+    run_info = holdout_result.get("run_info")
+    h_spec = run_info.get("spec") if isinstance(run_info, dict) else None
+    c_spec = extra.get("spec")
+    if not isinstance(h_spec, dict):
+        return Check(CHECK_HOLDOUT, False, "holdout_result spec bilgisi yok (run_info.spec); challenger ile eslestirilemedi")
+    if h_spec != c_spec:
+        return Check(CHECK_HOLDOUT, False,
+                     f"holdout_result spec'i challenger ile uyusmuyor (holdout: {h_spec.get('name')!r}, "
+                     f"challenger: {(c_spec or {}).get('name')!r})")
+    # 3) sonuc: model baz orandan iyi ve sifirdan ayrisan
+    main = holdout_result.get("main")
     if not isinstance(main, dict):
         return Check(CHECK_HOLDOUT, False, "sinama kumesi kaniti yok (holdout_result.main eksik/bos)")
     better, excl = bool(main.get("model_better")), bool(main.get("excludes_zero"))
@@ -151,9 +183,20 @@ def _check_holdout(holdout_result: dict | None, terfi: dict) -> Check:
     return Check(CHECK_HOLDOUT, bool(better and excl), info)
 
 
-def _check_shadow(own_days: int, required: int) -> Check:
-    return Check(CHECK_SHADOW, own_days >= required,
-                 f"challenger canli cozulmus farkli made_at gunu {own_days} (esik >= {required})")
+def _check_shadow(own_days: int, required: int, matched: pd.DataFrame) -> Check:
+    head = f"challenger canli cozulmus farkli made_at gunu {own_days} (esik >= {required})"
+    if own_days < required:
+        return Check(CHECK_SHADOW, False, head + "; gun sayisi yetersiz")
+    if len(matched) == 0:
+        return Check(CHECK_SHADOW, False, head + "; eslesen satir yok: baz orana karsi iyilesme olculemedi")
+    d = float(((matched["prob_up_ch"] - matched["label_up"]) ** 2
+               - (matched["prob_up_ref"] - matched["label_up"]) ** 2).mean())
+    ok = bool(d < 0.0)
+    n_dates = int(matched["made_at"].nunique())
+    return Check(CHECK_SHADOW, ok,
+                 head + f"; baz orana karsi ortalama Brier farki (challenger - baz) {d:.5f} "
+                 f"(gerekli < 0: {'iyilesme var' if ok else 'iyilesme yok'}), "
+                 f"eslesen {len(matched)} satir / {n_dates} gun")
 
 
 def _check_net(matched: pd.DataFrame, terfi: dict, cost: float, cost_label: str) -> Check:
@@ -175,6 +218,18 @@ def _check_net(matched: pd.DataFrame, terfi: dict, cost: float, cost_label: str)
                  f"referans {_f(ex_ref)} ({n_ref} kohort); gerekli: challenger > referans + {min_impr:g}; {head}")
 
 
+def _champion_info(ch: pd.DataFrame, champ: pd.DataFrame, champion: str) -> str:
+    """Champion ile BILGI AMACLI Brier karsilastirmasi (karar kosulu degil)."""
+    m = ch.merge(champ[["ticker", "made_at", "prob_up"]], on=["ticker", "made_at"], how="inner",
+                 suffixes=("_ch", "_champ"))
+    if m.empty:
+        return f"champion '{champion}' ile bilgi amacli karsilastirma: eslesen satir yok (karar kosulu degil)"
+    d = float(((m["prob_up_ch"] - m["label_up"]) ** 2 - (m["prob_up_champ"] - m["label_up"]) ** 2).mean())
+    yorum = "challenger champion'dan daha iyi" if d < 0 else "challenger champion'dan daha kotu ya da esit"
+    return (f"champion '{champion}' ile BILGI AMACLI (karar kosulu degil): eslesen {len(m)} satir / "
+            f"{int(m['made_at'].nunique())} gun, ortalama Brier farki (challenger - champion) {d:.5f}; {yorum}")
+
+
 # ---------------------------------------------------------------- ana giris
 
 def promote_check(
@@ -189,12 +244,15 @@ def promote_check(
     seed: int = 0,
     cost_bps: float | None = None,
 ) -> PromotionDecision:
-    """5 kosulun hepsini degerlendirir; approved = hepsi ok. Veri yetersizse cokmez, ilgili kosul ok=False olur."""
+    """5 kosulun hepsini degerlendirir; approved = hepsi ok. Veri yetersizse cokmez, ilgili kosul ok=False olur.
+
+    Referans her zaman BASELINE_REFERENCE. champion verilirse yalnizca decision.info'ya bilgi amacli yazilir.
+    """
     if not isinstance(challenger, str) or not challenger.strip():
         raise ValueError("challenger version bos olamaz")
-    reference = champion if champion is not None else BASELINE_REFERENCE
-    if reference == challenger:
+    if champion is not None and champion == challenger:
         raise ValueError("challenger kendisiyle karsilastirilamaz")
+    reference = BASELINE_REFERENCE
     bonferroni_alpha(alpha, n_trials)  # gecersiz alpha/n_trials erken ValueError
 
     terfi = cfg.get("terfi") or {}
@@ -215,20 +273,24 @@ def promote_check(
     n_days = int(matched["made_at"].nunique()) if len(matched) else 0
     own_days = int(ch["made_at"].nunique()) if len(ch) else 0
 
+    ch_params = _load_params(conn, challenger)
     note = ""
     if mism:
         note = f"UYARI: {mism} satirda etiket iki modelde farkli, dislandi"
-    row = conn.execute("SELECT params_json->>'label' FROM models WHERE version = %s", (challenger,)).fetchone()
-    if row and row[0] == "label_rel_up":
+    if ch_params and ch_params.get("label") == "label_rel_up":
         note = (note + "; " if note else "") + "NOT: challenger label_rel_up ile egitilmis, Brier label_up uzerinden olculdu"
 
     checks = [
         _check_days(n_days, min_dates, len(matched)),
         _check_brier(matched, terfi, alpha, n_trials, seed, note),
-        _check_holdout(holdout_result, terfi),
-        _check_shadow(own_days, shadow_req),
+        _check_holdout(holdout_result, terfi, ch_params),
+        _check_shadow(own_days, shadow_req, matched),
         _check_net(matched, terfi, cost, cost_label),
     ]
+    info: list[str] = []
+    if champion is not None:
+        champ = _load_resolved(conn, champion, horizon)
+        info.append(_champion_info(ch, champ, champion))
     approved = all(c.ok for c in checks)
     if approved:
         summary = f"ONAY: {challenger}, {reference} referansina karsi 5 kosulun hepsini sagladi."
@@ -236,7 +298,7 @@ def promote_check(
         failed = ", ".join(c.name for c in checks if not c.ok)
         summary = f"RED: {challenger} terfi edemez; basarisiz kosul(lar): {failed}."
     return PromotionDecision(approved=approved, challenger=challenger, reference=reference,
-                             checks=checks, summary=summary)
+                             checks=checks, summary=summary, info=info)
 
 
 def format_decision(decision: PromotionDecision) -> str:
@@ -248,6 +310,8 @@ def format_decision(decision: PromotionDecision) -> str:
     L.append("")
     L.append(f"Sonuc: {n_ok}/{len(decision.checks)} kosul saglandi; karar: {'ONAY' if decision.approved else 'RED'} "
              "(terfi icin tum kosullar gerekir).")
+    for s in decision.info:
+        L.append(f"Bilgi (karar disi): {s}")
     L.append("")
     L.append(DISCLAIMER)
     return "\n".join(L)

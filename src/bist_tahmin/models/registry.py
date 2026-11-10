@@ -1,16 +1,22 @@
 """Model kayit defteri: `models` tablosu uzerinde champion/challenger yasam dongusu (PROJE.md Bolum 6, 11).
 
 Roller ve gecisler (baska gecis ValueError):
-    challenger -> champion      (promote; mevcut champion AYNI islemde retired olur)
-    challenger -> retired       (retire)
-    champion   -> retired       (retire; champion'siz kalinabilir, ornegin devre kesici sonrasi)
-    retired    -> (terminal; geri donus yok)
+    (kayit)     -> challenger | retired   (register_model; champion ile kayit YASAK)
+    challenger  -> champion      (YALNIZ promote; mevcut champion AYNI islemde retired olur)
+    challenger  -> retired       (retire)
+    champion    -> retired       (retire; champion'siz kalinabilir, ornegin devre kesici sonrasi)
+    retired     -> (terminal; geri donus yok)
 
 Garantiler:
-- En fazla BIR champion vardir. DB'de kismi unique index YOKTUR (migration yazilmaz); bu kural uygulama
-  katmaninda tek islem + `pg_advisory_xact_lock` + `SELECT ... FOR UPDATE` ile saglanir: champion'i degistiren
-  her yol (promote, retire, role='champion' ile register_model) ayni kilidi alir, boylece eszamanli terfi
-  yarisinda iki champion olusamaz.
+- Champion atamasi yalnizca `promote` ile. register_model champion'i reddeder (ValueError).
+- En fazla BIR champion: DB'de kismi unique index (007_champion_guard.sql `models_one_champion`) ve
+  tetikleyici `models_role_guard` (champion yazimi yalnizca oturum ayari app.allow_promote='on' iken).
+  Uygulama tarafinda: promote tek islemde, `pg_advisory_xact_lock` + `SELECT ... FOR UPDATE` ile calisir;
+  eszamanli terfilerden biri digerini emekliye ayirir, iki champion olusamaz.
+- SINIR: app.allow_promote oturum ayari bist_app tarafindan da yazilabilir. DB korumasi denetimsiz/kazara
+  champion yazimini engeller; ham SQL ile bilerek bypass'a karsi tam sinir degildir. promote_check'in
+  zorunlulugu uygulama kodu seviyesindedir (promote.py); tam DB siniri icin promote'in SECURITY DEFINER
+  fonksiyona tasinmasi gerekir (bu surumde yapilmadi).
 - `register_model` mevcut bir version'u asla ezmez (ValueError). bist_app yalnizca `role` sutununu UPDATE
   edebilir (003_grants); burada baska alan degistirilmez.
 - Her islem kendi `conn.transaction()` blogundadir (cagiran islemdeyse savepoint olur).
@@ -29,6 +35,9 @@ from psycopg import Connection
 
 ROLES = ("champion", "challenger", "retired")
 ACTIVE_ROLES = ("champion", "challenger")
+_REGISTER_ROLES = ("challenger", "retired")
+# 007_champion_guard.sql: champion yazimi bu oturum ayariyla izinlidir; yalniz promote() acar.
+_PROMOTE_GUC = "app.allow_promote"
 _LOCK_KEY = zlib.crc32(b"bist_tahmin_models_lifecycle")
 _COLS = "version, role, trained_at, train_end, params_json"
 
@@ -84,12 +93,14 @@ def register_model(
 ) -> ModelRecord:
     """Yeni model satiri ekler (yalniz INSERT). Ayni version varsa ValueError: sessizce ezme/atlama yok.
 
-    role: 'challenger' (varsayilan) ya da 'champion' (champion zaten varsa ValueError). 'retired' ile kayit
-    acilamaz. params JSON'a (NaN/sonsuz olmadan) cevrilebilir olmalidir.
+    role: 'challenger' (varsayilan) ya da 'retired'. 'champion' ValueError: champion yalniz promote() ile atanir.
+    params JSON'a (NaN/sonsuz olmadan) cevrilebilir olmalidir.
     """
     _check_version(version)
-    if role not in ACTIVE_ROLES:
-        raise ValueError(f"kayit rolu {ACTIVE_ROLES} icinden olmali: {role!r}")
+    if role == "champion":
+        raise ValueError("champion register_model ile atanamaz; promote() kullanin")
+    if role not in _REGISTER_ROLES:
+        raise ValueError(f"kayit rolu {_REGISTER_ROLES} icinden olmali: {role!r}")
     if not isinstance(params, Mapping):
         raise ValueError("params bir sozluk olmali")
     try:
@@ -104,10 +115,6 @@ def register_model(
 
     with conn.transaction():
         _lock(conn)
-        if role == "champion":
-            cur = conn.execute("SELECT version FROM models WHERE role = 'champion'").fetchone()
-            if cur is not None:
-                raise ValueError(f"zaten bir champion var ({cur[0]}); once promote kullanin")
         row = conn.execute(
             "INSERT INTO models (version, trained_at, train_end, params_json, role)"
             " VALUES (%s, %s, %s, %s::jsonb, %s) ON CONFLICT (version) DO NOTHING"
@@ -177,6 +184,11 @@ def promote(conn: Connection, challenger_version: str) -> ModelRecord:
         old = conn.execute("SELECT version FROM models WHERE role = 'champion' FOR UPDATE").fetchall()
         for (v,) in old:
             conn.execute("UPDATE models SET role = 'retired' WHERE version = %s", (v,))
+        # Champion yazimi yalniz bu islem icinde izinlidir (SET LOCAL: islem sonunda kendiliginden doner;
+        # savepoint/dis islem icinde de hemen 'off' yapilir ki acik kalmasin).
+        # Hata olursa islem zaten geri alinir (ayar da doner); bu yuzden try/finally yok.
+        conn.execute(f"SET LOCAL {_PROMOTE_GUC} = 'on'")
         conn.execute("UPDATE models SET role = 'champion' WHERE version = %s", (challenger_version,))
+        conn.execute(f"SET LOCAL {_PROMOTE_GUC} = 'off'")
         row = conn.execute(f"SELECT {_COLS} FROM models WHERE version = %s", (challenger_version,)).fetchone()
     return _record(row)
