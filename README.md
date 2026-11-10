@@ -16,6 +16,9 @@ Faz 0 (iskelet): veritabanı kurulumu (`bist init`), şema, roller, append-only 
 uv venv --python 3.12 .venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 pytest            # Docker yoksa pgserver ile gömülü Postgres kullanılır
+# Tam takım bir Postgres kümesi için birçok veritabanı oluşturur (birkaç GB geçici alan).
+# /tmp küçük bir tmpfs ise geçici dizini büyük bir diske yönlendirin:
+TMPDIR=$HOME/.cache/bist-pytest-tmp pytest
 ```
 
 Docker'lı makinede gerçek Postgres 16 ile:

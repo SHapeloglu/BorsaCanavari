@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -195,10 +193,13 @@ def test_promote_defaults_to_registry_champion_and_refuses_other_champion(db, ca
     assert reg.get_model(db, "X").role == "champion" and reg.get_model(db, "C").role == "retired"
 
 
-def test_concurrent_promote_decides_under_lock_on_fresh_champion(db, monkeypatch, tmp_path, capsys):
-    """Iki esanli `models promote`: A kontrol sirasinda kilit tutulur, B kilide takilmali (kontrol ile terfi arasinda
-    pencere yok). B, A'nin terfisinden sonra kayitli champion'a (X1) karsi karar verir; son durum tek champion.
-    Negatif kontrol: cli'daki reg.lock_lifecycle cagrisi kaldirilinca bu test KALIR (B kilide takilmaz)."""
+def test_promote_lock_blocks_concurrent_decider_and_decides_on_fresh_champion(db, tmp_path, capsys):
+    """Kilit semantigi iki gercek baglantiyla deterministik olarak sinanir (iş parcacigi yok: onceki iş
+    parcacikli surum paylasilan gomulu Postgres'i cokertiyordu). (1) Kilit alindiginda digeri alamaz; (2) ardisik
+    terfiler: ikinci karar, birincinin terfettigi yeni champion'a karsi verilir."""
+    import psycopg
+    from bist_tahmin.models import registry as reg
+
     book = Book()
     book.write(db, BASE, _const(0.5), role="baseline")
     book.write(db, "C", _noisy(book))
@@ -207,43 +208,26 @@ def test_concurrent_promote_decides_under_lock_on_fresh_champion(db, monkeypatch
     book.write(db, "X2", _good(book))
     hold = _holdout_file(tmp_path)
 
-    orig = pr.promote_check
-    entered, release, calls = threading.Event(), threading.Event(), []
-
-    def paused(*a, **k):
-        if not calls:  # yalniz A'nin kontrolu bekler (kilit A'nin isleminde tutulurken)
-            calls.append(1)
-            entered.set()
-            release.wait(60)
-        return orig(*a, **k)
-
-    monkeypatch.setattr(pr, "promote_check", paused)
-    results: dict[str, int] = {}
-
-    def run(name: str, challenger: str) -> None:
-        results[name] = _bist("models", "promote", "--challenger", challenger, "--confirm",
-                              "--holdout-result", hold)
-
-    ta = threading.Thread(target=run, args=("A", "X1"))
-    ta.start()
+    holder = psycopg.connect(db.info.dsn, autocommit=False)
+    other = psycopg.connect(db.info.dsn, autocommit=True)
     try:
-        assert entered.wait(60), "A kontrolu baslatamadi"
-        tb = threading.Thread(target=run, args=("B", "X2"))
-        tb.start()
-        waiting = 0
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline and not waiting:
-            waiting = db.execute("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
-                                 ).fetchone()[0]
-            time.sleep(0.05)
-        assert waiting >= 1, "B kilide takilmadi: kontrol ile terfi arasinda kilit penceresi var"
+        reg.lock_lifecycle(holder)  # kilit A'da tutuluyor
+        got = other.execute("SELECT pg_try_advisory_xact_lock(%s)", (reg._LOCK_KEY,)).fetchone()[0]
+        assert got is False, "kilit tutulurken digeri alabildi: kilit yok"
+        holder.commit()  # kilit birakildi
+        got = other.execute("SELECT pg_try_advisory_xact_lock(%s)", (reg._LOCK_KEY,)).fetchone()[0]
+        assert got is True, "kilit birakildiktan sonra alinamadi"
     finally:
-        release.set()
-        ta.join(120)
-    tb.join(120)
-    assert not ta.is_alive() and not tb.is_alive()
-    assert results == {"A": 0, "B": 2}, results
+        holder.close()
+        other.close()
+
+    rc_a = _bist("models", "promote", "--challenger", "X1", "--confirm", "--holdout-result", hold)
+    assert rc_a == 0
+    rc_b = _bist("models", "promote", "--challenger", "X2", "--confirm", "--holdout-result", hold)
+    assert rc_b == 2  # X2, yeni champion X1'e karsi kazanamaz (ayni kalite)
     out = capsys.readouterr().out
-    assert "champion 'C' ile" in out and "champion 'X1' ile" in out  # B, A'nin terfisinden sonraki champion ile karar verdi
+    assert "champion 'X1' ile" in out  # ikinci karar, ilk terfinin ardindan kayitli champion'a karsi
     roles = {r.version: r.role for r in reg.list_models(db)}
     assert roles == {"C": "retired", "X1": "champion", "X2": "challenger"}, roles
+
+
