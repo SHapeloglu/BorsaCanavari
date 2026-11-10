@@ -1,7 +1,9 @@
 """models.promote: Bolum 11 karar kurali. Sentetik CANLI defter (dogrudan INSERT + cozum UPDATE) uzerinde:
 kasitli kotu challenger reddedilir; iyi challenger yalniz TUM kosullar saglaninca onaylanir.
-Referans her zaman baseline_base_rate_v1; champion yalniz bilgi amacli. Sinama kosulu holdout'u disarida
-tutmus ve ayni spec'ten bir challenger ister. Canli golge kosulu gun sayisina ek olarak iyilesme ister."""
+Baz oran (baseline_base_rate_v1) her zaman referanstir (PROJE Bolum 0). Champion verilirse kosul 2 (Brier) ve kosul 5
+(net getiri) icin challenger champion'dan da iyi olmalidir; iki karsilastirma da gecmelidir. Champion yoksa yalnizca
+baz orana karsi. Sinama kosulu holdout'u disarida tutmus ve ayni spec'ten bir challenger ister. Canli golge kosulu
+gun sayisina ek olarak baz orana karsi iyilesme ister (champion kosulu degistirmez)."""
 
 from __future__ import annotations
 
@@ -90,6 +92,12 @@ def _weak(book):  # ayni yon, kisilmis sinyal
 def _random(seed=5):
     rng = np.random.default_rng(seed)
     return lambda t, d: float(rng.uniform(0.05, 0.95))
+
+
+def _noisy(book, sigma=1.5, seed=7):  # kismen bilgili: siralamasi gercek sinyalden kotu (monoton donusum degil)
+    rng = np.random.default_rng(seed)
+    noise = {k: rng.normal() for k in book.s}
+    return lambda t, d: float(0.5 + 0.3 * np.tanh(book.s[(t, d)] + sigma * noise[(t, d)]))
 
 
 def _reversed(book):
@@ -259,26 +267,43 @@ def test_brier_improvement_threshold(ledger, book):
     assert failed(dec) == {pr.CHECK_BRIER}
 
 
-# ---------------------------------------------------------------- O1: referans her zaman baz oran
+# ---------------------------------------------------------------- champion: kosul 2 ve 5'te karar verici
 
-def test_champion_is_information_only_reference_stays_baseline(ledger, book):
-    db = ledger
-    book.write(db, "champ", _weak(book))
-    reg.promote(db, "champ")
-    book.write(db, "strong", _good(book))
-    dec = pr.promote_check(db, CFG, "strong", "champ", holdout_result=GOOD_HOLDOUT, cost_bps=5)
-    assert dec.reference == BASE, pr.format_decision(dec)
+def test_champion_must_be_beaten_as_well_as_base_rate(ledger, book):
+    """Champion C baz orana karsi GUCLU; challenger X baz orana karsi iyi ama C'den kotu -> X REDDEDILIR.
+    Kosul 2 (Brier) ve/veya kosul 5 (net) KALDI; detay champion farkini gosterir."""
+    book.write(ledger, "C", _good(book))
+    assert pr.promote_check(ledger, CFG, "C", holdout_result=GOOD_HOLDOUT).approved
+    reg.promote(ledger, "C")
+    book.write(ledger, "X", _weak(book))
+    dec = pr.promote_check(ledger, CFG, "X", "C", holdout_result=GOOD_HOLDOUT)
+    assert not dec.approved, pr.format_decision(dec)
+    assert failed(dec) and failed(dec) <= {pr.CHECK_BRIER, pr.CHECK_NET}, pr.format_decision(dec)
+    brier = dec.checks[1]
+    assert brier.sub[pr.SUB_CHAMPION] is False and brier.sub[pr.SUB_BASE] is True, brier.detail
+    assert "champion 'C' ile (ANA, karar kosulu)" in brier.detail
+    assert "Brier farki (challenger - champion 'C')" in brier.detail
+    assert "Brier farki (challenger - baz oran)" in brier.detail
+    assert "champion 'C'" in dec.info[0] and "Not: champion 'C' verildi" in pr.format_decision(dec)
+
+
+def test_challenger_better_than_champion_and_base_rate_is_approved(ledger, book):
+    """X hem champion'dan (C: kismen bilgili, siralamasi daha kotu) hem baz orandan iyi -> kosul 2 ve 5 iki
+    karsilastirmada da GECER -> onay. (Monoton donusumlu bir champion net getiride X ile ayni kohortlari secer; bu
+    yuzden champion siralamasi farkli olmali.)"""
+    book.write(ledger, "C", _noisy(book))
+    reg.promote(ledger, "C")
+    book.write(ledger, "X", _good(book))
+    dec = pr.promote_check(ledger, CFG, "X", "C", holdout_result=GOOD_HOLDOUT)
     assert dec.approved, pr.format_decision(dec)
-    assert len(dec.info) == 1 and "BILGI AMACLI" in dec.info[0] and "champion 'champ'" in dec.info[0]
-    assert [c.name for c in dec.checks] == list(pr.CHECK_NAMES)
-    assert "Bilgi (karar disi)" in pr.format_decision(dec)
-    # kendi kendine karsilastirma hala reddedilir
-    with pytest.raises(ValueError):
-        pr.promote_check(db, CFG, "strong", "strong")
+    assert dec.checks[1].sub == {pr.SUB_CHAMPION: True, pr.SUB_BASE: True}, dec.checks[1].detail
+    assert dec.checks[4].sub == {pr.SUB_CHAMPION: True, pr.SUB_BASE: True}, dec.checks[4].detail
+    assert "champion 'C'" in dec.summary and dec.summary.startswith("ONAY")
 
 
 def test_better_than_champion_but_worse_than_base_rate_is_rejected(ledger, book):
-    """Champion'dan iyi ama baz orandan kotu challenger REDDEDILIR (eski davranis onaylardi)."""
+    """Champion'dan iyi ama baz orandan kotu challenger REDDEDILIR. Champion karsilastirmasi gecer, baz oran
+    karsilastirmasi kalir: kosul 2 bu yuzden KALDI."""
     db = ledger
     book.write(db, "champ", _const(0.9))
     reg.promote(db, "champ")
@@ -286,7 +311,28 @@ def test_better_than_champion_but_worse_than_base_rate_is_rejected(ledger, book)
     dec = pr.promote_check(db, CFG, "rnd", "champ", holdout_result=GOOD_HOLDOUT)
     assert dec.reference == BASE
     assert not dec.approved and pr.CHECK_BRIER in failed(dec)
-    assert "daha iyi" in dec.info[0]  # champion'dan iyi (bilgi), ama karar baz orana gore
+    brier = dec.checks[1]
+    assert brier.sub == {pr.SUB_CHAMPION: True, pr.SUB_BASE: False}, brier.detail
+    assert "champion 'champ' ile (ANA, karar kosulu)" in brier.detail
+
+
+def test_no_champion_only_base_rate_regression(ledger, book):
+    """Champion yokken yalniz baz orana karsi karsilastirma (eski davranis); detayda champion gecmez."""
+    book.write(ledger, "good", _good(book))
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT)
+    assert dec.approved and dec.info == []
+    assert dec.checks[1].sub == {pr.SUB_BASE: True} and dec.checks[4].sub == {pr.SUB_BASE: True}
+    assert "champion" not in dec.checks[1].detail and "champion" not in dec.checks[4].detail
+    assert "champion" not in pr.format_decision(dec)
+
+
+def test_champion_without_resolved_rows_fails_closed(ledger, book):
+    """Champion'in cozulmus tahmini yoksa champion'a karsi iyilesme kanitlanamaz: kosul 2 ve 5 KALDI."""
+    book.write(ledger, "good", _good(book))
+    dec = pr.promote_check(ledger, CFG, "good", "hayalet", holdout_result=GOOD_HOLDOUT)
+    assert not dec.approved
+    assert failed(dec) >= {pr.CHECK_BRIER, pr.CHECK_NET}
+    assert "hesaplanamadi" in dec.checks[1].detail and "hayalet" in dec.checks[1].detail
 
 
 def test_empty_ledger_does_not_crash(db):
@@ -318,12 +364,12 @@ def test_n_trials_tightens_interval(ledger, book):
 
 
 def test_cost_resolution():
-    assert pr._resolve_cost({"costs": {}}, None)[0] == 10.0
-    assert pr._resolve_cost({"costs": {"commission_bps": 8, "spread_bps": None}}, None)[0] == 10.0
-    assert pr._resolve_cost({"costs": {"commission_bps": 8, "spread_bps": 4}}, None)[0] == 12.0
-    assert pr._resolve_cost({"costs": {"commission_bps": 8, "spread_bps": 4}}, 3)[0] == 3.0
+    assert pr.resolve_cost({"costs": {}}, None)[0] == 10.0 == pr.DEFAULT_COST_BPS
+    assert pr.resolve_cost({"costs": {"commission_bps": 8, "spread_bps": None}}, None)[0] == 10.0
+    assert pr.resolve_cost({"costs": {"commission_bps": 8, "spread_bps": 4}}, None)[0] == 12.0
+    assert pr.resolve_cost({"costs": {"commission_bps": 8, "spread_bps": 4}}, 3)[0] == 3.0
     with pytest.raises(ValueError):
-        pr._resolve_cost({}, -1)
+        pr.resolve_cost({}, -1)
 
 
 def test_promotion_flow_with_registry(db, book):

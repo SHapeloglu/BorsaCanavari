@@ -20,7 +20,6 @@ Kararlar
 from __future__ import annotations
 
 import datetime as dt
-import math
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
@@ -28,6 +27,7 @@ import pandas as pd
 import psycopg
 
 from ..evaluate.portfolio import PortfolioResult, equity_curve, relative_drawdown, simulate_cohort_portfolio
+from ..models.promote import resolve_cost
 from .state import get_state, set_state
 
 STATE_KEY = "circuit_breaker"
@@ -92,14 +92,13 @@ def model_cohort_returns(
 
 
 def configured_cost_bps(cfg: dict) -> float:
-    """costs.commission_bps + spread_bps; ikisi de null iken 0 (oranlar dogrulanmadi; duyarlilik raporda)."""
-    costs = cfg.get("costs") or {}
-    total = 0.0
-    for k in ("commission_bps", "spread_bps"):
-        v = costs.get(k)
-        if v is not None and math.isfinite(float(v)):
-            total += float(v)
-    return total
+    """Devre kesicinin tek yon maliyet varsayimi = terfi kuralinin kurali (models.promote.resolve_cost): komisyon ve
+    spread ikisi de yapilandirilmissa toplam; aksi halde 10 bps (DEFAULT_COST_BPS, DOGRULANMADI).
+
+    Neden 0 degil: 0 bps 'maliyetsiz' demekti; devre kesici terfi kararindan daha iyimser calisip iki karar
+    arasinda celiski yaratirdi. 10 bps muhafazakardir: maliyet arttikca strateji daha kotu gorunur ve devre kesici
+    daha erken tetiklenir (guvenli taraf)."""
+    return resolve_cost(cfg)[0]
 
 
 def evaluate_model(df: pd.DataFrame, model_version: str, cfg: dict, *, after=None) -> BreakerVerdict:

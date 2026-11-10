@@ -7,6 +7,9 @@ Her test kendi izole veritabanini kullanir (tests/test_daily.py'deki `db` deseni
 from __future__ import annotations
 
 import datetime as dt
+import json
+import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -20,7 +23,9 @@ from bist_tahmin import cli
 from bist_tahmin.backtest.dataset import Dataset, save_dataset
 from bist_tahmin.db import APP_ROLE, run_init, with_overrides
 from bist_tahmin.features.build import FEATURE_VERSION
+from bist_tahmin.models import promote as pr
 from bist_tahmin.models import registry as reg
+from test_promote import BASE, GOOD_HOLDOUT, Book, _const, _good, _noisy
 
 ROOT = Path(__file__).resolve().parents[1]
 CFG = str(ROOT / "config" / "default.yaml")
@@ -162,3 +167,83 @@ def test_train_dry_run_writes_nothing_and_real_run_registers_challenger(db, tmp_
     assert [r.version for r in recs] == ["logreg_t1@2024-10-01"]
     assert recs[0].role == "challenger"
     assert _bist(*args) == 2  # ayni version: sessizce ezilmez
+
+
+# --- terfi: registry champion'i ve esanli terfi (promote.promote_check + registry, tek kilit) -------------------------
+
+def _holdout_file(tmp_path: Path) -> str:
+    p = tmp_path / "holdout.json"
+    p.write_text(json.dumps(GOOD_HOLDOUT), encoding="utf-8")
+    return str(p)
+
+
+def test_promote_defaults_to_registry_champion_and_refuses_other_champion(db, capsys, tmp_path):
+    book = Book()
+    book.write(db, BASE, _const(0.5), role="baseline")
+    book.write(db, "C", _noisy(book))
+    reg.promote(db, "C")
+    book.write(db, "X", _good(book))
+    hold = _holdout_file(tmp_path)
+    # kayitli champion C iken baska bir champion adi verilirse terfi yapilmaz (C sessizce emekliye ayrilamaz)
+    assert _bist("models", "promote", "--challenger", "X", "--confirm", "--holdout-result", hold,
+                 "--champion", "Z") == 2
+    assert reg.get_model(db, "C").role == "champion" and reg.get_model(db, "X").role == "challenger"
+    capsys.readouterr()
+    # bayrak verilmezse kayitli champion karsilastirilir ve kararda kullanilir
+    assert _bist("models", "promote", "--challenger", "X", "--confirm", "--holdout-result", hold) == 0
+    assert "champion 'C'" in capsys.readouterr().out
+    assert reg.get_model(db, "X").role == "champion" and reg.get_model(db, "C").role == "retired"
+
+
+def test_concurrent_promote_decides_under_lock_on_fresh_champion(db, monkeypatch, tmp_path, capsys):
+    """Iki esanli `models promote`: A kontrol sirasinda kilit tutulur, B kilide takilmali (kontrol ile terfi arasinda
+    pencere yok). B, A'nin terfisinden sonra kayitli champion'a (X1) karsi karar verir; son durum tek champion.
+    Negatif kontrol: cli'daki reg.lock_lifecycle cagrisi kaldirilinca bu test KALIR (B kilide takilmaz)."""
+    book = Book()
+    book.write(db, BASE, _const(0.5), role="baseline")
+    book.write(db, "C", _noisy(book))
+    reg.promote(db, "C")
+    book.write(db, "X1", _good(book))
+    book.write(db, "X2", _good(book))
+    hold = _holdout_file(tmp_path)
+
+    orig = pr.promote_check
+    entered, release, calls = threading.Event(), threading.Event(), []
+
+    def paused(*a, **k):
+        if not calls:  # yalniz A'nin kontrolu bekler (kilit A'nin isleminde tutulurken)
+            calls.append(1)
+            entered.set()
+            release.wait(60)
+        return orig(*a, **k)
+
+    monkeypatch.setattr(pr, "promote_check", paused)
+    results: dict[str, int] = {}
+
+    def run(name: str, challenger: str) -> None:
+        results[name] = _bist("models", "promote", "--challenger", challenger, "--confirm",
+                              "--holdout-result", hold)
+
+    ta = threading.Thread(target=run, args=("A", "X1"))
+    ta.start()
+    try:
+        assert entered.wait(60), "A kontrolu baslatamadi"
+        tb = threading.Thread(target=run, args=("B", "X2"))
+        tb.start()
+        waiting = 0
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not waiting:
+            waiting = db.execute("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
+                                 ).fetchone()[0]
+            time.sleep(0.05)
+        assert waiting >= 1, "B kilide takilmadi: kontrol ile terfi arasinda kilit penceresi var"
+    finally:
+        release.set()
+        ta.join(120)
+    tb.join(120)
+    assert not ta.is_alive() and not tb.is_alive()
+    assert results == {"A": 0, "B": 2}, results
+    out = capsys.readouterr().out
+    assert "champion 'C' ile" in out and "champion 'X1' ile" in out  # B, A'nin terfisinden sonraki champion ile karar verdi
+    roles = {r.version: r.role for r in reg.list_models(db)}
+    assert roles == {"C": "retired", "X1": "champion", "X2": "challenger"}, roles

@@ -77,6 +77,13 @@ def _lock(conn: Connection) -> None:
     conn.execute("SELECT pg_advisory_xact_lock(%s)", (_LOCK_KEY,))
 
 
+def lock_lifecycle(conn: Connection) -> None:
+    """Yasam dongusu kilidi (register/promote/retire ile AYNI anahtar). Acik bir islem icinde cagrilir; kilit islem
+    bitince kalkar. Ayni oturumda promote da ayni kilidi alir; advisory kilit oturum icinde yiginlanir (bloklanmaz),
+    bu yuzden kilit alinmis bir islemde promote cagrilabilir. Ornek kullanim: cli._cmd_models_promote."""
+    _lock(conn)
+
+
 def _select_for_update(conn: Connection, version: str) -> ModelRecord | None:
     row = conn.execute(f"SELECT {_COLS} FROM models WHERE version = %s FOR UPDATE", (version,)).fetchone()
     return _record(row) if row else None

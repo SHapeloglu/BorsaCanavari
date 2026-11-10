@@ -19,6 +19,7 @@ from bist_tahmin.config import load_config
 from bist_tahmin.db import APP_ROLE, list_migrations, plan_init, run_init, with_overrides
 from bist_tahmin.monitor import breaker, drift
 from bist_tahmin.monitor.breaker import BreakerVerdict, evaluate_breaker
+from bist_tahmin.models import promote as pr
 from bist_tahmin.monitor.state import get_state, set_state, to_jsonable
 
 CFG = load_config("config/default.yaml")
@@ -155,6 +156,14 @@ def test_model_cohort_returns_and_after_cutoff():
     assert len(net2) == 21 and net2.index.min() == cut     # 'after' DAHIL: reset gununun kohortu sayilir
     assert len(breaker.model_cohort_returns(df, "m1", after=cut + pd.Timedelta(days=1))[0]) == 20
     assert breaker.model_cohort_returns(df, "baska")[0].empty
+
+
+def test_breaker_cost_is_promote_default_when_costs_missing():
+    """Maliyet null iken devre kesici 0 degil, terfi ile ayni 10 bps varsayimini kullanir (tutarlilik, muhafazakar)."""
+    assert breaker.configured_cost_bps({}) == pr.DEFAULT_COST_BPS == 10.0
+    assert breaker.configured_cost_bps(CFG) == 10.0                      # default.yaml: komisyon/spread null
+    assert breaker.configured_cost_bps({"costs": {"commission_bps": 8, "spread_bps": None}}) == 10.0
+    assert breaker.configured_cost_bps({"costs": {"commission_bps": 8, "spread_bps": 4}}) == 12.0
 
 
 def test_evaluate_model_trips_on_bad_model_only():

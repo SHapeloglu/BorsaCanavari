@@ -461,12 +461,27 @@ def _family_trials(conn, family: str) -> int:
     return max(1, count_trials(conn, family))
 
 
+def _resolve_champion(conn, given: str | None) -> str | None:
+    """Karsilastirilacak champion: registry'deki mevcut champion (varsa). --champion verilirse ve kayitli champion ile
+    ayni degilse ValueError: terfi, karar verilmeyen bir champion'u sessizce emekliye ayiramaz."""
+    from .models import registry as reg
+
+    current = [r.version for r in reg.list_models(conn, ["champion"])]
+    current_v = current[0] if current else None
+    if given is None:
+        return current_v
+    if given != current_v:
+        raise ValueError(f"--champion ({given}) kayitli champion ({current_v or 'yok'}) ile ayni degil")
+    return given
+
+
 def _decide(conn, cfg: dict, args: argparse.Namespace):
     from .models.promote import promote_check
 
     holdout = _load_holdout(args.holdout_result)
     n_trials = _family_trials(conn, args.family)
-    decision = promote_check(conn, cfg, args.challenger, args.champion,
+    champion = _resolve_champion(conn, args.champion)
+    decision = promote_check(conn, cfg, args.challenger, champion,
                              holdout_result=holdout, n_trials=n_trials)
     return decision, n_trials
 
@@ -601,20 +616,24 @@ def _cmd_models_promote(args: argparse.Namespace) -> int:
     try:
         cfg = load_config(args.config)
         with conn:
-            decision, n_trials = _decide(conn, cfg, args)
-            print(f"deneme sayisi (aile {args.family}, Bonferroni): {n_trials}")
-            print(format_decision(decision))
-            if not decision.approved:
-                print(f"hata: terfi reddedildi ({decision.summary}); hicbir sey degismedi", file=sys.stderr)
-                return 2
-            if args.dry_run:
-                print(f"{prefix}terfi kosullari saglandi; yazilmadi")
-                return 0
-            with tracked_job(conn, "models-promote", today, record=True) as run:
-                old = [r.version for r in reg.list_models(conn, ["champion"])]
-                rec = reg.promote(conn, args.challenger)
-                run.detail.update({"promoted": rec.version, "retired_champions": old, "n_trials": n_trials,
-                                   "decision": decision.summary})
+            # Karar ve terfi TEK islemde, ayni kilit altinda: kilit once alinir, sonra kontrol okunur. Boylece iki
+            # esanli terfi, birinin kararinin dayandigi champion'i degistiremez (kontrol ile terfi arasinda pencere yok).
+            with conn.transaction():
+                reg.lock_lifecycle(conn)
+                decision, n_trials = _decide(conn, cfg, args)
+                print(f"deneme sayisi (aile {args.family}, Bonferroni): {n_trials}")
+                print(format_decision(decision))
+                if not decision.approved:
+                    print(f"hata: terfi reddedildi ({decision.summary}); hicbir sey degismedi", file=sys.stderr)
+                    return 2
+                if args.dry_run:
+                    print(f"{prefix}terfi kosullari saglandi; yazilmadi")
+                    return 0
+                with tracked_job(conn, "models-promote", today, record=True) as run:
+                    old = [r.version for r in reg.list_models(conn, ["champion"])]
+                    rec = reg.promote(conn, args.challenger)  # ayni oturum, ayni kilit: yeniden alinir, bloklanmaz
+                    run.detail.update({"promoted": rec.version, "retired_champions": old, "n_trials": n_trials,
+                                       "decision": decision.summary})
     except JobLocked as exc:
         print(f"atlandi: {exc}", file=sys.stderr)
         return 4
