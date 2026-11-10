@@ -144,12 +144,21 @@ class BorsapySource:
         import borsapy as bp  # gec import: testlerde sahte kaynak kullanilirken gerekmez
 
         self._bp = bp
+        # Ornek-basina onbellek (kalici degil): ticker -> splits. Yalnizca basarili cekim yazilir.
+        self._splits_cache: dict[str, pd.DataFrame | None] = {}
+
+    def _cached_splits(self, ticker: str, t) -> pd.DataFrame | None:
+        """Hisse basina splits bir kez cekilir (Is Yatirim cagrisi yavas). Hata olursa istisna oldugu gibi
+        yukari gider ve onbellege hicbir sey yazilmaz; sonraki cagri tekrar dener."""
+        if ticker not in self._splits_cache:
+            self._splits_cache[ticker] = t.splits
+        return self._splits_cache[ticker]
 
     def history(self, ticker: str, start: str | None = None, end: str | None = None) -> pd.DataFrame:
         t = self._bp.Ticker(ticker)
         # splits'i acikca al: adjust=False icindeki ayni cagri hatayi yutar (bkz. check_raw_vs_adjusted).
         try:
-            splits = t.splits
+            splits = self._cached_splits(ticker, t)
         except Exception as exc:
             raise SourceError(f"{ticker}: splits alinamadi, ham fiyat dogrulanamaz: {exc}") from exc
         kw = _range_kwargs(start, end)
@@ -169,7 +178,7 @@ class BorsapySource:
     def corporate_actions(self, ticker: str) -> pd.DataFrame:
         t = self._bp.Ticker(ticker)
         rows: list[dict] = []
-        for d, r in bonus_events(t.splits):
+        for d, r in bonus_events(self._cached_splits(ticker, t)):
             rows.append({"ex_date": d, "kind": "split", "value": r})
         divs = t.dividends
         # Gelecekteki (henuz gerceklesmemis, degisebilecek) temettu duyurulari yazilmaz.
