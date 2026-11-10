@@ -107,8 +107,102 @@ def test_borsapy_source_splits_failure_is_error(monkeypatch):
 
     src = BorsapySource.__new__(BorsapySource)
     src._bp = FakeBp
+    src._splits_cache = {}
     with pytest.raises(SourceError):
         src.history("BIMAS", "2026-01-01")
+
+
+class _CountingBp:
+    """Sahte borsapy: Ticker.splits borsapy gibi ornek basina bir kez cekilir (cached_property);
+    history(adjust=False) ayni ornekte splits okur (_unadjust_prices)."""
+
+    def __init__(self, fail_times=0):
+        self.fetches = 0
+        self.fail_left = fail_times
+        outer = self
+
+        class Ticker:
+            def __init__(self, _):
+                self._splits = None
+
+            @property
+            def splits(self):
+                if self._splits is None:
+                    outer.fetches += 1
+                    if outer.fail_left > 0:
+                        outer.fail_left -= 1
+                        raise TimeoutError("isyatirim zaman asimi")
+                    self._splits = pd.DataFrame(
+                        {"BonusFromCapital": [100.0], "BonusFromDividend": [0.0], "RightsIssue": [0.0]},
+                        index=pd.to_datetime(["2026-05-13"]),
+                    )
+                return self._splits
+
+            @property
+            def dividends(self):
+                return pd.DataFrame({"Amount": []})
+
+            def history(self, period="1mo", interval="1d", start=None, end=None, actions=False,
+                        adjust=True, auto_adjust=False):
+                if not adjust:
+                    try:
+                        self.splits
+                    except Exception:
+                        pass  # borsapy _unadjust_prices davranisi: hatayi yutar
+                    return _borsapy_like([800, 810, 405, 400])
+                return _borsapy_like([400, 405, 405, 400])
+
+        self.Ticker = Ticker
+
+
+def _source(bp):
+    src = BorsapySource.__new__(BorsapySource)
+    src._bp = bp
+    src._splits_cache = {}
+    return src
+
+
+def test_splits_fetched_once_per_ticker_in_fetch_flow():
+    """history + corporate_actions (fetch.py akisi): splits gercek cagrisi hisse basina bir kez."""
+    bp = _CountingBp()
+    src = _source(bp)
+    df = src.history("BIMAS", "2026-05-08", "2026-05-20")
+    ca = src.corporate_actions("BIMAS")
+    assert bp.fetches == 1
+    assert (ca["kind"] == "split").sum() == 1  # onbellekten de bedelsiz olay kayitlari gelir
+    assert df["close_adj"].tolist() == [400, 405, 405, 400]
+
+
+def test_splits_cache_is_per_ticker_and_per_instance():
+    bp = _CountingBp()
+    src = _source(bp)
+    src.history("BIMAS", "2026-05-08", "2026-05-20")
+    src.history("THYAO", "2026-05-08", "2026-05-20")
+    assert bp.fetches == 2  # iki hisse, ikisi de bir kez
+    other = _source(_CountingBp())
+    other.history("BIMAS", "2026-05-08", "2026-05-20")
+    assert other._bp.fetches == 1  # baska ornek kendi onbellegini kurar
+
+
+def test_splits_failure_raises_and_is_not_cached():
+    bp = _CountingBp(fail_times=1)
+    src = _source(bp)
+    with pytest.raises(SourceError):
+        src.history("BIMAS", "2026-05-08", "2026-05-20")
+    assert "BIMAS" not in src._splits_cache
+    df = src.history("BIMAS", "2026-05-08", "2026-05-20")  # tekrar denenir ve basarili olur
+    assert bp.fetches == 2 and len(df) == 4
+    assert "BIMAS" in src._splits_cache
+
+
+def test_corporate_actions_failure_propagates_unchanged_and_not_cached():
+    """corporate_actions eskiden splits hatasini sarmiyordu; bu davranis korunur ve onbellek bos kalir."""
+    bp = _CountingBp(fail_times=1)
+    src = _source(bp)
+    with pytest.raises(TimeoutError):
+        src.corporate_actions("BIMAS")
+    assert "BIMAS" not in src._splits_cache
+    assert len(src.corporate_actions("BIMAS")) == 1
 
 
 @network
