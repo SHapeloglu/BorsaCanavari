@@ -8,8 +8,10 @@ Kararlar
 - YALNIZ model satirlari (champion/challenger) degerlendirilir; baseline'lar olcum kontroludur, model iddiasi degildir:
   devre kesici acikken baseline'lar yazilmaya devam eder (predict/daily.py).
 - OTOMATIK YENIDEN BASLAMAZ: tek yol `reset(conn, reason)` ve gerekce ZORUNLUDUR. Onceki durum 'history'ye eklenir.
-- reset'ten sonra degerlendirme yeniden baslar: `evaluate_after` (reset gunu) ve oncesi made_at'li kohortlar sayilmaz.
-  Aksi halde zirveden dusus ayni gecmis veriden hemen tekrar tetiklenirdi (sonsuz dongu).
+- reset'ten sonra degerlendirme yeniden baslar: `evaluate_after` = reset'in Istanbul islem gunu; bu gun DAHIL
+  made_at'li kohortlar sayilir (o gunun tahmini reset'ten sonraki calismada uretilir), ondan once olanlar sayilmaz.
+  Aksi halde zirveden dusus ayni gecmis veriden hemen tekrar tetiklenirdi (sonsuz dongu). Drift da ayni kesimi
+  kullanir (pipeline._monitor), yoksa reset sonrasi eski drift penceresi hemen yeniden alarm verirdi.
 - Esik STRICT asimla tetiklenir (dusus > esik). Veri yoksa tetiklenmez (kanit yok).
 - Ozkaynak gecersizse (<= 0, NaN) tetiklenir: belirsizlikte durmak guvenli taraftir.
 - equity_curve MTM icermez (evaluate/portfolio.py): dusus ALT SINIRDIR; gercek dusus daha derin olabilir.
@@ -76,11 +78,11 @@ def model_cohort_returns(
 ) -> tuple[pd.Series, pd.Series]:
     """Tek modelin COZULMUS satirlarindan (net kohort getirisi, benchmark getirisi); index = made_at.
 
-    `df` kolonlari: made_at, ticker, model_version, score, tradable_ret. `after`: bu tarihten (HARIC) onceki
-    kohortlar sayilmaz (reset sonrasi yeniden baslangic)."""
+    `df` kolonlari: made_at, ticker, model_version, score, tradable_ret. `after`: bu tarihten ITIBAREN (dahil)
+    kohortlar sayilir; daha eski kohortlar sayilmaz (reset sonrasi yeniden baslangic)."""
     d = df[df["model_version"] == model_version]
     if after is not None:
-        d = d[pd.to_datetime(d["made_at"]) > pd.Timestamp(after)]
+        d = d[pd.to_datetime(d["made_at"]) >= pd.Timestamp(after)]
     if d.empty:
         empty = pd.Series(dtype=float, index=pd.DatetimeIndex([], name="made_at"))
         return empty, empty
@@ -141,7 +143,7 @@ def trip(conn: psycopg.Connection, verdict: BreakerVerdict, model_version: str, 
 
 def reset(conn: psycopg.Connection, reason: str, *, now: dt.datetime | None = None) -> dict:
     """Devre kesiciyi elle kapatir. Gerekce ZORUNLU (bos/bosluk -> ValueError). Onceki durum 'history'ye eklenir;
-    degerlendirme reset gununden sonraki kohortlarla yeniden baslar. Yeni durumu dondurur."""
+    degerlendirme reset'in islem gununden (dahil) sonraki kohortlarla yeniden baslar. Yeni durumu dondurur."""
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("devre kesici sifirlamak icin acik bir gerekce (reason) zorunlu")
     n = _now(now)

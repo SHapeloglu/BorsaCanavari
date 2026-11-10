@@ -11,6 +11,7 @@ yalnizca okur.
 
 from __future__ import annotations
 
+import datetime as dt
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -67,6 +68,8 @@ def _matched(df: pd.DataFrame, model_version: str, reference_version: str) -> pd
     d = df.loc[df["model_version"].isin([model_version, reference_version]), ["made_at", "ticker", "model_version",
                                                                              "prob_up", "label_up"]]
     d = d.dropna(subset=["prob_up", "label_up"])
+    if d.empty:   # ornegin reset sonrasi kesim tum satirlari dusurdu: eslesme yok (NaN, alarm yok)
+        return pd.DataFrame(columns=["made_at", "ticker", "p_model", "p_ref", "y"])
     if d.duplicated(["made_at", "ticker", "model_version"]).any():
         raise ValueError("ayni (made_at, ticker, model_version) birden fazla satir")
     wide = d.pivot(index=["made_at", "ticker"], columns="model_version", values=["prob_up", "label_up"])
@@ -112,11 +115,17 @@ def drift_alert(gap: float | None, threshold: float) -> bool:
 
 
 def drift_check(
-    df: pd.DataFrame, model_version: str, cfg: dict, reference_version: str = REFERENCE_VERSION
+    df: pd.DataFrame, model_version: str, cfg: dict, reference_version: str = REFERENCE_VERSION,
+    *, after: dt.date | str | pd.Timestamp | None = None,
 ) -> DriftResult:
-    """cfg['drift'] ayarlariyla tek modelin drift durumu (not dahil)."""
+    """cfg['drift'] ayarlariyla tek modelin drift durumu (not dahil).
+
+    `after`: yalnizca bu tarihten ITIBAREN (dahil) made_at satirlari degerlendirilir (devre kesici reset'i sonrasi
+    yeniden baslangic; eski drift penceresi reset'ten sonra yeniden alarm uretmesin)."""
     window = int(cfg["drift"]["rolling_window"])
     threshold = float(cfg["drift"]["brier_over_base_rate_alert"])
+    if after is not None and len(df):
+        df = df[pd.to_datetime(df["made_at"]) >= pd.Timestamp(after)]
     gap, n_days, n_rows, bm, br = _gap_details(df, window, model_version, reference_version)
     if not math.isfinite(gap):
         note = f"veri yetersiz: eslesen {n_days} gun < pencere {window}; alarm yok"

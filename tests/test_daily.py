@@ -540,10 +540,9 @@ def test_pipeline_model_error_sets_exit_code_1_and_keeps_baselines(db, monkeypat
     assert BROKEN.version in detail["predict"]["model_errors"]
 
 
-def test_pipeline_drift_alarm_sets_exit_code_1(db, monkeypatch):
-    conn, _ = db
-    _patch_models(monkeypatch, [CHAMP])
-    # 65 gun, iki surum: referans sabit 0.55, model kotu (0.95/0.05 rastgele isaret) => Brier farki buyuk
+def _insert_drift_history(conn):
+    """65 gun, iki surum: referans sabit 0.55, model kotu (0.95/0.05 rastgele isaret) => Brier farki buyuk."""
+    version = CHAMP.version
     ins = ("INSERT INTO predictions (ticker, made_at, horizon_days, prob_up, score, model_version, model_role,"
            " feature_hash, features_json, created_at) VALUES (%s, %s, 5, %s, %s, %s, %s, 'h', '{}'::jsonb, now())")
     upd = ("UPDATE predictions SET resolved_at = made_at + 7, realized_ret = 0, realized_rel_ret = 0, tradable_ret = 0,"
@@ -552,15 +551,62 @@ def test_pipeline_drift_alarm_sets_exit_code_1(db, monkeypatch):
     for d in pd.bdate_range(end="2026-09-04", periods=65):
         for t in TICKERS:
             y = int(rng.random() < 0.5)
-            for ver, role, p in ((CHAMP.version, "champion", 0.95 if rng.random() < 0.5 else 0.05),
+            for ver, role, p in ((version, "champion", 0.95 if rng.random() < 0.5 else 0.05),
                                  ("baseline_base_rate_v1", "baseline", 0.55)):
                 conn.execute(ins, (t, d.date(), p, p, ver, role))
                 conn.execute(upd, (y, t, d.date(), ver))
+
+
+def test_pipeline_drift_alarm_sets_exit_code_1(db, monkeypatch):
+    conn, _ = db
+    _patch_models(monkeypatch, [CHAMP])
+    _insert_drift_history(conn)
     src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
     res = run_pipeline(conn, CFG, src, now=dt.datetime(2026, 10, 30, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
     assert res.exit_code == 1 and any("DRIFT ALARMI" in line for line in res.lines), res.lines
     detail = conn.execute("SELECT detail FROM runs WHERE job='daily' ORDER BY id DESC LIMIT 1").fetchone()[0]
     assert detail["monitor"]["models"][CHAMP.version]["drift"]["alert"] is True
+
+
+def test_pipeline_drift_alarm_trips_breaker_and_pauses_models_next_day(db, monkeypatch):
+    conn, _ = db
+    _patch_models(monkeypatch, [CHAMP])
+    _insert_drift_history(conn)
+    src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
+    res = run_pipeline(conn, CFG, src, now=dt.datetime(2026, 10, 30, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
+    assert res.exit_code == 1 and any("DEVRE KESICI TETIKLENDI" in line for line in res.lines), res.lines
+    st = breaker.status(conn)
+    assert st["tripped"] and st["model_version"] == CHAMP.version and st["reason"].startswith("drift alarmi")
+    assert st["relative_drawdown"] is None                                  # drift tetiklemesinde dusus yok
+    # ertesi is gunu (2 Kasim, Pazartesi): model satiri YOK, baseline satiri VAR, neden models_paused'ta
+    nxt = dt.date(2026, 11, 2)
+    src2 = _Source(pd.bdate_range(end=pd.Timestamp(nxt), periods=NDAYS))
+    res2 = run_pipeline(conn, CFG, src2, now=dt.datetime(2026, 11, 2, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
+    assert res2.exit_code == 1
+    detail = conn.execute("SELECT detail FROM runs WHERE job='daily' ORDER BY id DESC LIMIT 1").fetchone()[0]
+    assert detail["predict"]["models_paused"] and detail["predict"]["models_written"] == 0
+    assert _count(conn, "made_at = %s AND model_role <> 'baseline'", (nxt,)) == 0
+    assert _count(conn, "made_at = %s AND model_role = 'baseline'", (nxt,)) == len(BASELINES) * len(TICKERS)
+
+
+def test_pipeline_resumes_after_reset_without_immediate_retrip(db, monkeypatch):
+    # Drift penceresi reset'ten once tetiklendi. Reset (2 Kasim sabahi) sonrasi ayni gun calisma model satiri uretir
+    # ve ESKI drift penceresi yeniden alarm vermez (drift da reset kesimini kullanir).
+    conn, _ = db
+    _patch_models(monkeypatch, [CHAMP])
+    _insert_drift_history(conn)
+    src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
+    run_pipeline(conn, CFG, src, now=dt.datetime(2026, 10, 30, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
+    assert breaker.status(conn)["tripped"]
+    nxt = dt.date(2026, 11, 2)
+    breaker.reset(conn, "test: drift incelendi", now=dt.datetime(2026, 11, 2, 7, 0, tzinfo=UTC))
+    src2 = _Source(pd.bdate_range(end=pd.Timestamp(nxt), periods=NDAYS))
+    res2 = run_pipeline(conn, CFG, src2, now=dt.datetime(2026, 11, 2, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
+    assert not breaker.status(conn)["tripped"], res2.lines
+    detail = conn.execute("SELECT detail FROM runs WHERE job='daily' ORDER BY id DESC LIMIT 1").fetchone()[0]
+    assert detail["predict"]["models_paused"] is None and detail["predict"]["models_written"] == len(TICKERS)
+    assert _count(conn, "made_at = %s AND model_version = %s", (nxt, CHAMP.version)) == len(TICKERS)
+    assert detail["monitor"]["models"][CHAMP.version]["drift"]["alert"] is False
 
 
 def test_pipeline_monitor_failure_is_visible_but_does_not_break_the_run(db, monkeypatch):
@@ -575,9 +621,11 @@ def test_pipeline_monitor_failure_is_visible_but_does_not_break_the_run(db, monk
     assert status == "ok" and "state coktu" in detail["monitor"]["error"]
 
 
-def test_pipeline_stale_run_skips_monitoring(db, monkeypatch):
+def test_stale_run_skips_monitoring(db, monkeypatch):
     conn, _ = db
     src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
-    run_pipeline(conn, CFG, src, now=dt.datetime(2026, 11, 4, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
+    res = run_pipeline(conn, CFG, src, now=dt.datetime(2026, 11, 4, 16, 30, tzinfo=UTC), pause=0, universe_min_size=1)
     detail = conn.execute("SELECT detail FROM runs WHERE job='daily' ORDER BY id DESC LIMIT 1").fetchone()[0]
-    assert "monitor" not in detail
+    # bayat veriyle drift/devre kesici karari verilmez; atlama kaydi runs.detail'de gorunur
+    assert detail["monitor"] == {"skipped": "bayat veri: drift ve devre kesici karari verilmedi"}
+    assert any("ATLANDI" in line for line in res.lines) and "predict" not in detail

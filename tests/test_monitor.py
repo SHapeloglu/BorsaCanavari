@@ -152,7 +152,8 @@ def test_model_cohort_returns_and_after_cutoff():
     assert len(net) == 30 and net.iloc[0] == pytest.approx(-0.05) and bench.iloc[0] == pytest.approx(-0.05 * 2 / 6)
     cut = pd.bdate_range("2026-01-05", periods=30)[9]
     net2, _ = breaker.model_cohort_returns(df, "m1", after=cut)
-    assert len(net2) == 20 and net2.index.min() > cut      # 'after' HARIC
+    assert len(net2) == 21 and net2.index.min() == cut     # 'after' DAHIL: reset gununun kohortu sayilir
+    assert len(breaker.model_cohort_returns(df, "m1", after=cut + pd.Timedelta(days=1))[0]) == 20
     assert breaker.model_cohort_returns(df, "baska")[0].empty
 
 
@@ -239,6 +240,18 @@ def _drift_frame(n_days=70, model_noise=0.0, tickers=("A", "B", "C", "D"), seed=
             rows.append({"made_at": d, "ticker": t, "model_version": REF, "prob_up": 0.55, "label_up": y})
             rows.append({"made_at": d, "ticker": t, "model_version": "m1", "prob_up": p_model, "label_up": y})
     return pd.DataFrame(rows)
+
+
+def test_drift_after_cutoff_ignores_days_before_reset():
+    # gurultu yalniz ilk 60 gunde: tum pencere alarm verir; reset gununden (dahil) sonra temiz 10 gun yetersiz -> alarm yok
+    df = _drift_frame(n_days=70, model_noise=0.4, late_only=True)
+    assert drift.drift_check(df, "m1", CFG).alert is True
+    clean_from = pd.bdate_range("2026-01-05", periods=70)[60]
+    res = drift.drift_check(df, "m1", CFG, after=clean_from)
+    assert res.alert is False and res.n_days == 10 and "veri yetersiz" in res.note
+    # kesimden sonra hic satir kalmazsa cokmez: eslesme yok -> NaN, alarm yok
+    far = drift.drift_check(df, "m1", CFG, after="2030-01-01")
+    assert far.alert is False and far.n_days == 0
 
 
 def test_rolling_brier_gap_known_value():

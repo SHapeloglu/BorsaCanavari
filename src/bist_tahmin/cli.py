@@ -426,6 +426,250 @@ def _cmd_backtest_run(args: argparse.Namespace) -> int:
     return 0
 
 
+class _DryRunRollback(Exception):
+    """Kuru calistirmada tum yazimi geri almak icin ic istisna (islem yapilmaz, yalniz kontroller ve egitim)."""
+
+
+def _models_roles_arg(raw: str | None) -> list[str] | None:
+    if raw is None:
+        return None
+    return [r.strip() for r in raw.split(",") if r.strip()]
+
+
+def _load_holdout(path: str | None) -> dict | None:
+    """lab.result_json ciktisi (run_info.spec iceren). Dosya yoksa None: promote_check sinama kosulunu KALDI verir."""
+    import json
+    from pathlib import Path
+
+    if path is None:
+        print("UYARI: --holdout-result verilmedi; sinama kumesi kosulu KALDI sayilacak", file=sys.stderr)
+        return None
+    p = Path(path)
+    if not p.exists():
+        print(f"UYARI: holdout dosyasi yok ({p}); sinama kumesi kosulu KALDI sayilacak", file=sys.stderr)
+        return None
+    data = json.loads(p.read_text(encoding="utf-8"))  # bozuk JSON: ValueError -> exit 2
+    if not isinstance(data, dict):
+        raise ValueError(f"holdout dosyasi bir JSON nesnesi olmali: {p}")
+    return data
+
+
+def _family_trials(conn, family: str) -> int:
+    """Bonferroni paydasi: backtest experiments tablosunda o ailedeki kayit sayisi (en az 1)."""
+    from .backtest.registry import count_trials
+
+    return max(1, count_trials(conn, family))
+
+
+def _decide(conn, cfg: dict, args: argparse.Namespace):
+    from .models.promote import promote_check
+
+    holdout = _load_holdout(args.holdout_result)
+    n_trials = _family_trials(conn, args.family)
+    decision = promote_check(conn, cfg, args.challenger, args.champion,
+                             holdout_result=holdout, n_trials=n_trials)
+    return decision, n_trials
+
+
+def _register_challenger(conn, cfg: dict, ds, spec, as_of, *, dry_run: bool):
+    """train_and_register; dry_run ise tum islem geri alinir (kayit, deney satiri yok). Kontroller aynen calisir."""
+    from .models.train import train_and_register
+
+    if not dry_run:
+        return train_and_register(conn, cfg, ds, spec, as_of)
+    box = []
+    try:
+        with conn.transaction():
+            box.append(train_and_register(conn, cfg, ds, spec, as_of))
+            raise _DryRunRollback()
+    except _DryRunRollback:
+        pass
+    return box[0]
+
+
+def _cmd_models_list(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .models.registry import list_models
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    try:
+        with conn:
+            recs = list_models(conn, _models_roles_arg(args.roles))
+    except ValueError as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    if not recs:
+        print("kayitli model yok")
+        return 0
+    for r in recs:
+        print(f"{r.version}  role={r.role}  trained_at={r.trained_at.isoformat(timespec='minutes')}  "
+              f"train_end={r.train_end}")
+    return 0
+
+
+def _cmd_models_train(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .backtest import lab
+    from .backtest.dataset import load_dataset
+    from .jobs import JobLocked, tracked_job
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    today = _today_istanbul()
+    try:
+        cfg = load_config(args.config)
+        as_of = dt.date.fromisoformat(args.as_of) if args.as_of else today
+        ds = load_dataset(args.dataset)
+        features = args.features.split(",") if "," in args.features else args.features
+        spec = lab.ModelSpec(name=args.name, label=args.label, features=features, C=args.C)
+        with conn, tracked_job(conn, "models-train", today, record=not args.dry_run) as run:
+            rec = _register_challenger(conn, cfg, ds, spec, as_of, dry_run=args.dry_run)
+            ex = rec.params.get("extra") or {}
+            run.detail.update({"version": rec.version, "n_rows": ex.get("n_rows"), "dry_run": args.dry_run})
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    verb = "hesaplandi (kayit geri alindi)" if args.dry_run else "challenger kaydedildi"
+    print(f"{prefix}{verb}: {rec.version}")
+    print(f"{prefix}role={rec.role} train_end={rec.train_end} satir={ex.get('n_rows')} "
+          f"gun={ex.get('n_train_days')} tarih={ex.get('train_date_min')}..{ex.get('train_date_max')} "
+          f"taban_oran={ex.get('train_base_rate')}")
+    print(f"{prefix}sinama kumesi disarida: {ex.get('train_includes_holdout') is False} "
+          f"(holdout_start={ex.get('holdout_start')})")
+    return 0
+
+
+def _cmd_models_promote_check(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .models.promote import format_decision
+
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    try:
+        cfg = load_config(args.config)
+        with conn:
+            decision, n_trials = _decide(conn, cfg, args)
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    print(f"{prefix}deneme sayisi (aile {args.family}, Bonferroni): {n_trials}")
+    print(format_decision(decision))
+    return 0 if decision.approved else 1
+
+
+def _cmd_models_promote(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .jobs import JobLocked, tracked_job
+    from .models import registry as reg
+    from .models.promote import format_decision
+
+    if not args.confirm:
+        print("hata: terfi icin --confirm gerekli; promote-check onayi tek basina terfi ettirmez. Hicbir sey yapilmadi.",
+              file=sys.stderr)
+        return 2
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    today = _today_istanbul()
+    try:
+        cfg = load_config(args.config)
+        with conn:
+            decision, n_trials = _decide(conn, cfg, args)
+            print(f"deneme sayisi (aile {args.family}, Bonferroni): {n_trials}")
+            print(format_decision(decision))
+            if not decision.approved:
+                print(f"hata: terfi reddedildi ({decision.summary}); hicbir sey degismedi", file=sys.stderr)
+                return 2
+            if args.dry_run:
+                print(f"{prefix}terfi kosullari saglandi; yazilmadi")
+                return 0
+            with tracked_job(conn, "models-promote", today, record=True) as run:
+                old = [r.version for r in reg.list_models(conn, ["champion"])]
+                rec = reg.promote(conn, args.challenger)
+                run.detail.update({"promoted": rec.version, "retired_champions": old, "n_trials": n_trials,
+                                   "decision": decision.summary})
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ConfigError, ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    print(f"terfi tamam: {rec.version} champion oldu; emekliye ayrilan eski champion: {old or 'yok'}")
+    return 0
+
+
+def _cmd_models_retire(args: argparse.Namespace) -> int:
+    import psycopg
+
+    from .jobs import JobLocked, tracked_job
+    from .models import registry as reg
+
+    reason = (args.reason or "").strip()
+    if not reason:
+        print("hata: --reason (acik gerekce) zorunlu; gerekcesiz emeklilik yapilmaz", file=sys.stderr)
+        return 2
+    conn = _app_conn_or_none()
+    if conn is None:
+        _need_db_message()
+        return 2
+    prefix = "[dry-run] " if args.dry_run else ""
+    today = _today_istanbul()
+    try:
+        with conn:
+            cur = reg.get_model(conn, args.version)
+            if cur is None:
+                raise ValueError(f"model yok: {args.version}")
+            if cur.role == "retired":
+                raise ValueError(f"model zaten retired (terminal): {args.version}")
+            if args.dry_run:
+                print(f"{prefix}{cur.version} ({cur.role}) emekliye ayrilacak; gerekce: {reason}")
+                return 0
+            with tracked_job(conn, "models-retire", today, record=True) as run:
+                run.detail.update({"version": cur.version, "from_role": cur.role, "reason": reason})
+                reg.retire(conn, cur.version)
+    except JobLocked as exc:
+        print(f"atlandi: {exc}", file=sys.stderr)
+        return 4
+    except (ValueError, OSError) as exc:
+        print(f"hata: {exc}", file=sys.stderr)
+        return 2
+    except psycopg.Error as exc:
+        print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
+        return 2
+    print(f"emekliye ayrildi: {args.version} (gerekce: {reason}; runs tablosuna kaydedildi)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bist", description="BIST 30 tahmin olcum laboratuvari")
     p.add_argument("--version", action="version", version=f"bist {__version__}")
@@ -525,6 +769,41 @@ def build_parser() -> argparse.ArgumentParser:
     br.add_argument("--use-holdout", action="store_true", help="YALNIZCA terfi asamasi: dokunulmaz sinama kumesini ac (loglanir)")
     br.add_argument("--dry-run", action="store_true", help="veritabanina yazma (deneme sayilmaz)")
     br.set_defaults(func=_cmd_backtest_run)
+
+    mdl = sub.add_parser("models", help="model yasam dongusu: liste, challenger egitimi, terfi kontrolu, terfi, emeklilik")
+    mdl_sub = mdl.add_subparsers(dest="models_command", required=True)
+    mlist = mdl_sub.add_parser("list", help="kayitli modeller (salt-okunur)")
+    mlist.add_argument("--roles", default=None, help="virgullu roller: champion,challenger,retired (varsayilan: hepsi)")
+    mlist.set_defaults(func=_cmd_models_list)
+    mtrain = mdl_sub.add_parser("train", help="challenger egit ve CHALLENGER olarak kaydet (champion atanmaz)")
+    mtrain.add_argument("--dataset", default="data/dataset.pkl")
+    mtrain.add_argument("--name", required=True, help="model adi (version = logreg_NAME@AS_OF)")
+    mtrain.add_argument("--features", default="all_z", help="grup ya da virgullu ad listesi")
+    mtrain.add_argument("--label", default="label_up", choices=["label_up", "label_rel_up"])
+    mtrain.add_argument("--C", type=float, default=1.0)
+    mtrain.add_argument("--as-of", default=None, help="YYYY-MM-DD (varsayilan: bugun, Istanbul)")
+    mtrain.add_argument("--dry-run", action="store_true", help="egitir ve kontrol eder, kaydi geri alir (hicbir sey kalici yazilmaz)")
+    mtrain.set_defaults(func=_cmd_models_train)
+    mpc = mdl_sub.add_parser("promote-check", help="terfi kuralini degerlendirir (yazmaz; cikis 0 ONAY, 1 RED)")
+    mpc.add_argument("--challenger", required=True, help="challenger version")
+    mpc.add_argument("--champion", default=None, help="yalnizca bilgi amacli karsilastirma")
+    mpc.add_argument("--holdout-result", default=None, help="lab.result_json ciktisi (JSON); yoksa sinama kosulu KALDI")
+    mpc.add_argument("--family", default="faz35", help="n_trials: backtest experiments'ta bu ailedeki kayit sayisi")
+    mpc.add_argument("--dry-run", action="store_true", help="kabul edilir, etkisiz (kontrol zaten yazmaz)")
+    mpc.set_defaults(func=_cmd_models_promote_check)
+    mpro = mdl_sub.add_parser("promote", help="challenger'i champion yapar; YALNIZ terfi kontrolu onaylar VE --confirm verilirse")
+    mpro.add_argument("--challenger", required=True)
+    mpro.add_argument("--confirm", action="store_true", help="zorunlu onay bayragi; yoksa hicbir sey yapilmaz (cikis 2)")
+    mpro.add_argument("--champion", default=None, help="yalnizca bilgi amacli karsilastirma")
+    mpro.add_argument("--holdout-result", default=None, help="lab.result_json ciktisi (JSON)")
+    mpro.add_argument("--family", default="faz35", help="n_trials ailesi")
+    mpro.add_argument("--dry-run", action="store_true", help="kontrolu gosterir, terfi ettirmez")
+    mpro.set_defaults(func=_cmd_models_promote)
+    mret = mdl_sub.add_parser("retire", help="modeli emekliye ayirir; --reason ZORUNLU (gerekce runs tablosuna yazilir)")
+    mret.add_argument("--version", required=True)
+    mret.add_argument("--reason", default=None, help="emeklilik gerekcesi (zorunlu)")
+    mret.add_argument("--dry-run", action="store_true", help="yazmadan ne olacagini goster")
+    mret.set_defaults(func=_cmd_models_retire)
     return p
 
 

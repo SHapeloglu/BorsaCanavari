@@ -9,9 +9,10 @@ Cikis kodlari (cron/izleme icin):
   4  (cli) is zaten calisiyor (kilit).
 XU100 indirilemezse is basarisiz sayilir (takvim kaynagi odur) ve istisna firlatir.
 Faz 4: tahmin adiminda aktif modeller de yazilir (predict/daily.py); `model_errors` varsa ya da devre kesici aciksa
-  cikis kodu en az 1. Tahmin adimindan sonra (veri guncelse) IZLEME adimi: her aktif model icin drift (alarm = cikis
-  1) ve devre kesici degerlendirmesi; ilk tetiklemede durum `system_state`e yazilir ve model uretimi bir SONRAKI
-  calismadan itibaren durur (baseline'lar surer). Izleme hatasi akisi bozmaz ama cikis kodunu 1 yapar.
+  cikis kodu en az 1. Tahmin adimindan sonra IZLEME adimi (veri bayatsa atlanir; runs.detail'de `skipped` kalir):
+  her aktif model icin drift (alarm = cikis 1) ve devre kesici degerlendirmesi; ilk tetiklemede (drift alarmi ya da
+  goreli dusus) durum `system_state`e yazilir ve model uretimi bir SONRAKI calismadan itibaren durur (baseline'lar
+  surer). Izleme hatasi akisi bozmaz ama cikis kodunu 1 yapar.
 Her adimin sonucu `runs.detail`e HEMEN yazilir; is sonradan patlasa bile ne yapildigi gorunur.
 """
 
@@ -46,29 +47,37 @@ class PipelineResult:
 
 
 def _monitor(conn, cfg: dict, out: PipelineResult, step, *, dry_run: bool, clock: dt.datetime) -> None:
-    """Drift + devre kesici (PROJE.md Bolum 12 adim 6). Hata akisi bozmaz ama cikis kodunu 1 yapar."""
+    """Drift + devre kesici (PROJE.md Bolum 12 adim 6). Hata akisi bozmaz ama cikis kodunu 1 yapar.
+
+    Drift alarmi, devre kesici ile AYNI kalici mekanizmayi tetikler: durum system_state'e yazilir, model uretimi bir
+    sonraki calismadan itibaren durur (predict/daily.py models_paused); baseline'lar surer; yalniz
+    `bist breaker reset` ile kapanir. Reset sonrasi hem drift hem devre kesici yalnizca reset gununden itibaren
+    (dahil) kohortlara bakar."""
     try:
         st = breaker.status(conn)
         records = daily_mod.load_active_models(conn)
         versions = [str(r.version) for r in records]
         df = drift.load_resolved(conn, [*versions, drift.REFERENCE_VERSION]) if versions else None
-        info: dict = {"breaker_open": bool(st["tripped"]), "models": {}}
+        after = breaker.evaluate_after_date(st)
+        info: dict = {"breaker_open": bool(st["tripped"]), "evaluate_after": after.isoformat() if after else None,
+                      "models": {}}
         if st["tripped"]:
             out.bump(1)
             out.lines.append(f"[izleme] DEVRE KESICI ACIK (since {st.get('since')}, model {st.get('model_version')}): "
                              f"{st.get('reason')}; modeller durduruldu, `bist breaker reset --reason ...` bekleniyor")
-        after = breaker.evaluate_after_date(st)
         newly: tuple[str, breaker.BreakerVerdict] | None = None
         for rec in records:
             version = str(rec.version)
             entry: dict = {"role": str(rec.role)}
-            d = drift.drift_check(df, version, cfg)
+            d = drift.drift_check(df, version, cfg, after=after)
             entry["drift"] = d.as_dict()
             out.lines.append(f"[izleme] drift {version}: {d.note}")
             if d.alert:
                 out.bump(1)
                 out.lines.append(f"[izleme] UYARI: DRIFT ALARMI {version}: Brier fark {d.gap:+.4f} > "
                                  f"{cfg['drift']['brier_over_base_rate_alert']:+.4f}")
+                if newly is None and not st["tripped"]:
+                    newly = (version, breaker.BreakerVerdict(True, float("nan"), f"drift alarmi: {d.note}"))
             if not st["tripped"]:
                 v = breaker.evaluate_model(df, version, cfg, after=after)
                 entry["breaker"] = {"tripped": v.tripped, "relative_drawdown": v.relative_drawdown, "detail": v.detail}
@@ -189,6 +198,9 @@ def run_pipeline(
         # 4) tahmin (yalnizca veri guncelse ve yazim penceresi aciksa)
         if stale:
             out.bump(3)
+            # bayat veriyle drift/devre kesici karari verilmez; atlama runs.detail'de gorunur kalir
+            step("monitor", {"skipped": "bayat veri: drift ve devre kesici karari verilmedi"})
+            out.lines.append("[izleme] ATLANDI: veri bayat; drift/devre kesici karari verilmedi")
         else:
             try:
                 dres = run_daily(conn, cfg, dry_run=dry_run, created_at=clock if injected else None)
