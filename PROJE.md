@@ -2,7 +2,7 @@
 
 Bu dosya projenin tek kaynak gerçeğidir (single source of truth). Bu projede çalışan her oturum, kod yazmadan önce bu dosyayı baştan sona okumalı. Bir karar değişirse önce bu dosya güncellenir, sonra kod.
 
-Sürüm: v2 (2026-11-08). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
+Sürüm: v3.1 (2026-11-11). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
 
 ---
 
@@ -591,6 +591,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v3.1 (2026-11-11): Durum düzeltmesi ve doküman seti.** (1) Holdout kanıt kontrolü (`7b29738`): terfi kanıtı artık `experiment.use_holdout == True`, `holdout_start` = gerçek yapılandırma, `train_max_date < holdout_start` ve spec eşleşmesi ile doğrulanır (fail-closed); yerelde 726 test yeşil, **sunucu imajında henüz yok** (terfi öncesi zorunlu). (2) Sağlık kontrolü cron'u (`deploy/cron_health.sh`, 20:30 satırı) depoda hazır, **sunucuda eklenmedi**. (3) Proje dokümanları oluşturuldu/güncellendi: `CLAUDE.md`, `architect.md`, `task.md`, `backlog.md`, `session.md`, `README.md`. Depoda `main` dalı yok; çalışma dalı `faz-4-yasam-dongusu`.
 - **v3.0 (2026-11-11): Canlı dağıtım.** Sunucuya (Contabo) uygulananlar: (1) splits önbelleği (`cab326c`) ve Faz 4 kodunun tamamı (`HEAD`, `bist-tahmin:latest`; önceki imaj `bist-tahmin:prev-20261110`); (2) migration 006 (system_state) ve 007 (champion koruması) — idempotent, diğer veritabanlarına dokunulmadı; (3) geçmiş BIST 30 üyeliği (`universe load-history`, 58 aralık; açık üye 30; 9–11 Kasım ve geçmiş tarihlerde evren 30 hisse, daily fetch kümesi değişmedi); (4) 17 eski üyenin fiyat geçmişi 2019-06'dan (47 hisse, takvim 2019–2026, 1.859 işlem günü, hata/dışlama yok). Yeni imajla kuru `run-daily`: çıkış 0; `breaker status` kapalı; `models list` boş. Tahmin defteri: 300 satır (9 ve 10 Kasım), değişmedi. 10 Kasım 19:00 çalıştırması: 150 tahmin, çıkış 0.
   **Kalan sınır (terfi için BLOKE):** holdout kanıt dosyasının gerçek sınama penceresinde üretildiğini ve eğitimin en son tarihinin sınırın altında kaldığını doğrulayan kontrol, ayrı bir düzeltme olarak yapılıyor (yerel). Bu kontrol olmadan hiçbir challenger terfi ettirilmemeli. Otomatik haftalık yeniden eğitim hâlâ YOK (manuel CLI).
 - **v2.9 (2026-11-10):** Faz 4 yerelde BİRLEŞMEYE HAZIR DEĞİL, ama düzeltmeler tamam (commit'ler `e99ae35`, `e91b9cb`, `6d35357`, test düzeltmesi bu sürümle). Bağımsız incelemeler ve düzeltmeler: (1) holdout dışarıda (train), holdout kanıtı spec ile eşleşmeli; (2) terfi kosul 2 ve 5 champion'a karşı (varsa) VE baz orana karşı (her zaman); champion yoksa yalnız baz oran; (3) champion yazma yalnız promote ile (SET LOCAL kapısı, sınırı belgeli); (4) migration 007: tek champion indeksi, rol trigger'ı, system_state korumaları; (5) drift alarmı model üretimini durdurur (baseline sürer), bayat veride izleme atlanır (kayıtlı); (6) `bist models list|train|promote-check|promote|retire`; promote `--confirm` ister. Kalan (kararsız): haftalık yeniden eğitim otomatik DEĞİL (manuel CLI); promote_check ile promote aynı kilit altında; SET LOCAL kapısı kasıtlı SQL bypass'ını durdurmaz (güçlü garanti SECURITY DEFINER gerektirir: spec dışı). Sunucuya Faz 4 henüz uygulanmadı.
