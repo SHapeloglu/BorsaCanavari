@@ -54,6 +54,10 @@ def test_run_records_experiment_and_keeps_holdout_locked(conn, ds):
     assert run.preds["end_date"].max() < dates[600]                             # etiket bitisi de girmez
     rec = list_experiments(conn, "t_lock")[0]
     assert rec["params_json"]["holdout"]["locked"] is True and rec["result_json"]["experiment"]["n_trials"] == 1
+    # terfi kosulu 3 icin sayisal/acik alanlar: gercek pencere ve kilit kapali (use_holdout=False)
+    ex = run.result["experiment"]
+    assert ex["holdout_start"] == str(dates[600].date()) and ex["use_holdout"] is False
+    assert rec["result_json"]["experiment"]["use_holdout"] is False
     main = run.result["main"]
     assert main["model_better"] is True and main["excludes_zero"] is True    # beta=0.9: gercek sinyal baz orani gecer
     assert main["n_trials"] == 1 and run.result["n_dates"] > 0
@@ -78,6 +82,8 @@ def test_use_holdout_is_explicit_and_recorded(conn, ds):
     assert run.preds["date"].max() >= dates[600]                                # kilit acik: holdout gunleri test edilir
     rec = list_experiments(conn, "t_open")[0]
     assert rec["params_json"]["holdout"]["locked"] is False and "holdout" in rec["params_json"]["holdout"]["note"].lower()
+    assert run.result["experiment"]["use_holdout"] is True                       # acik erisim sonuca yazilir
+    assert run.result["experiment"]["holdout_start"] == str(dates[600].date())   # pencere: gercek yapilandirma
 
 
 def test_dry_run_writes_nothing(conn, ds):

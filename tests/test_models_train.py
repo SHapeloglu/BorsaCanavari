@@ -175,6 +175,8 @@ def test_holdout_rows_excluded_by_default():
     params, te, n = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=hs)
     assert n == 175 * len(TICKERS) and params["extra"]["train_includes_holdout"] is False
     assert params["extra"]["train_date_max"] == str(DAYS[174].date())
+    # train_max_date = max(date, end_date): en son satirin etiketi DAYS[179] (date 174 + H), sinirin altinda
+    assert params["extra"]["train_max_date"] == str(DAYS[179].date()) and params["extra"]["holdout_start"] == str(hs.date())
 
 
 def test_include_holdout_uses_full_window_and_flags_it():
@@ -187,6 +189,23 @@ def test_include_holdout_uses_full_window_and_flags_it():
                                      include_holdout=True)
     assert params["extra"]["train_includes_holdout"] is True
     assert params["extra"]["include_holdout"] is True
+    # son etiket AS_OF'ta (DAYS[200]) bitiyor: train_max_date (end_date dahil) sinirin ustunde -> bayrak True
+    assert params["extra"]["train_max_date"] == str(AS_OF.date()) and params["extra"]["train_max_date"] >= str(hs.date())
+
+
+def test_includes_holdout_flag_follows_real_data_not_config():
+    """Bayrak cfg'ye degil gercek egitim verisine baglidir. Dahil etme istenmis ama veri sinirin altinda kaldiysa
+    holdout egitime girmemistir: bayrak False. Sinir veriye girdiyse (cfg dogru ya da yanlis olsun) True."""
+    f = make_frame()
+    below = DAYS[250]   # egitim verisi (en son DAYS[200]) bu sinirin altinda kalir
+    params, _, _ = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=below,
+                                     include_holdout=True)
+    assert params["extra"]["train_max_date"] == str(AS_OF.date())
+    assert params["extra"]["train_includes_holdout"] is False
+    inside = DAYS[190]  # egitim verisi bu sinirin ustune tasar
+    params, _, _ = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=inside,
+                                     include_holdout=True)
+    assert params["extra"]["train_includes_holdout"] is True
 
 
 def test_holdout_start_is_required_unless_explicitly_included():
@@ -286,10 +305,12 @@ def test_train_includes_holdout_flag(db):
     assert ex["train_includes_holdout"] is False
     assert ex["holdout_start"] == str(DAYS[100].date())
     assert pd.Timestamp(ex["train_date_max"]) < DAYS[100]
+    assert pd.Timestamp(ex["train_max_date"]) < DAYS[100]   # promote kosul 3 (train_max_date < holdout_start) icin
     # bilerek dahil edilirse bayrak True (promote bu modeli sinama kosulunda reddeder)
     inc = train.train_and_register(db, cfg, make_ds(), SPEC, AS_OF, version_prefix="inc", include_holdout=True)
     assert inc.params["extra"]["train_includes_holdout"] is True
     assert pd.Timestamp(inc.params["extra"]["train_date_max"]) == TRAIN_END
+    assert pd.Timestamp(inc.params["extra"]["train_max_date"]) == AS_OF   # etiket bitisi (end_date) dahil
 
 
 def test_due_for_retrain(db):

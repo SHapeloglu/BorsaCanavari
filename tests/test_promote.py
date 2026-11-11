@@ -31,9 +31,14 @@ SPEC_P = lab.ModelSpec(name="p", features=FEATS_P, C=1.0)
 SPEC_OTHER = lab.ModelSpec(name="p", features=FEATS_P, C=0.5)     # ayni ad, farkli parametre
 SPEC_REL = lab.ModelSpec(name="rel", label="label_rel_up", features=FEATS_P)
 BASE = pr.BASELINE_REFERENCE
+# holdout_result = runner.run_experiment ciktisi: experiment.use_holdout (erisim acik) ve holdout_start (gercek pencere,
+# CFG holdout.holdout_start ile ayni olmali) kosul 3 kanitinin parcasi. Eksik alan => KALDI (fail-closed).
+HOLD_START = str(CFG["holdout"]["holdout_start"])
 GOOD_HOLDOUT = {"main": {"model_better": True, "excludes_zero": True, "diff": -0.02, "lo": -0.03, "hi": -0.01,
                          "n_dates": 120}, "n_dates": 120, "sufficient": True,
-                "run_info": {"spec": SPEC_P.params()}}
+                "run_info": {"spec": SPEC_P.params()},
+                "experiment": {"id": 1, "family": "t", "n_trials": 1, "holdout": "SINAMA KUMESI ACIK",
+                               "holdout_start": HOLD_START, "use_holdout": True}}
 INS = ("INSERT INTO predictions (ticker, made_at, horizon_days, prob_up, score, model_version, model_role,"
        " feature_hash, features_json, created_at) VALUES (%s, %s, 5, %s, %s, %s, %s, 'h', '{}'::jsonb, now())")
 UPD = ("UPDATE predictions SET resolved_at = %s, realized_ret = %s, realized_rel_ret = %s, tradable_ret = %s,"
@@ -53,7 +58,10 @@ def _reg(conn, version, spec=SPEC_P, *, include_holdout=False):
     """Challenger kaydi (egitim meta verisi). Zaten varsa dokunmaz."""
     if reg.get_model(conn, version) is not None:
         return
-    extra = {"spec": spec.params(), "train_includes_holdout": include_holdout, "holdout_start": "2026-05-01"}
+    # train_max_date: egitimin kullandigi en son tarih (end_date dahil). Holdout disarida ise < holdout_start,
+    # dahil edilmisse >= holdout_start (gercek veriden uretilir; train.py bunu boyle yazar)
+    extra = {"spec": spec.params(), "train_includes_holdout": include_holdout, "holdout_start": HOLD_START,
+             "train_max_date": "2026-05-05" if include_holdout else "2024-04-30"}
     reg.register_model(conn, version, {"label": spec.label, "extra": extra}, dt.date(2023, 12, 1))
 
 
@@ -223,6 +231,93 @@ def test_challenger_without_training_record_rejected(ledger, book):
     assert failed(dec) == {pr.CHECK_HOLDOUT} and "dogrulanamadi" in dec.checks[2].detail
     dec = pr.promote_check(ledger, CFG, "unregistered_x", holdout_result=GOOD_HOLDOUT)
     assert pr.CHECK_HOLDOUT in failed(dec) and "dogrulanamadi" in dec.checks[2].detail
+
+
+def _with_exp(**over):
+    """GOOD_HOLDOUT'un experiment alanini gunceller (over: anahtar -> deger; None ise anahtar silinir)."""
+    exp = {**GOOD_HOLDOUT["experiment"], **over}
+    return {**GOOD_HOLDOUT, "experiment": {k: v for k, v in exp.items() if v is not None}}
+
+
+def test_holdout_result_from_wrong_window_is_rejected(ledger, book):
+    """holdout_start=2030 ile uretilmis sonuc (kopya/yanlis cfg) kabul edilmez: pencere yapilandirmayla uyusmali."""
+    book.write(ledger, "good", _good(book))
+    wrong = _with_exp(holdout_start="2030-01-01")
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=wrong)
+    assert not dec.approved and failed(dec) == {pr.CHECK_HOLDOUT}
+    assert "uyusmuyor" in dec.checks[2].detail and "2030-01-01" in dec.checks[2].detail
+    # ayni sonuc, ama kullanilan cfg'de baska bir sinir varsa da reddedilir (sonuc bu cfg'nin sinama kumesinde yok)
+    cfg = copy.deepcopy(CFG)
+    cfg["holdout"]["holdout_start"] = "2030-01-01"
+    dec = pr.promote_check(ledger, cfg, "good", holdout_result=GOOD_HOLDOUT)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "uyusmuyor" in dec.checks[2].detail
+
+
+def test_use_holdout_false_result_is_rejected(ledger, book):
+    """Kilit kapaliyken uretilmis sonuc (use_holdout=False) terfi kaniti degildir: erisim acikca yapilmamis."""
+    book.write(ledger, "good", _good(book))
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result={**GOOD_HOLDOUT, "experiment": {
+        **GOOD_HOLDOUT["experiment"], "use_holdout": False}})
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "use_holdout=False" in dec.checks[2].detail
+    # use_holdout=False + 2030 pencere: ikisi de kusur; yine KALDI
+    both = {**GOOD_HOLDOUT, "experiment": {**GOOD_HOLDOUT["experiment"], "use_holdout": False,
+                                           "holdout_start": "2030-01-01"}}
+    assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=both)) == {pr.CHECK_HOLDOUT}
+
+
+def test_real_window_with_use_holdout_and_matching_spec_passes_holdout(ledger, book):
+    """Gercek pencere + use_holdout=True + spec eslesmesi + train_max_date < holdout: kosul 3 gecer."""
+    book.write(ledger, "good", _good(book))
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT)
+    assert dec.checks[2].ok and dec.checks[2].name == pr.CHECK_HOLDOUT
+    assert dec.approved
+
+
+def test_training_reaching_holdout_is_rejected_by_max_date(ledger, book):
+    """train_max_date >= holdout_start (end_date dahil): train_includes_holdout=False yazili olsa bile KALDI."""
+    for tmax in (HOLD_START, "2026-05-20"):  # tam sinir ve sonrasi
+        version = f"leak_{tmax}"
+        reg.register_model(ledger, version, {"label": SPEC_P.label, "extra": {
+            "spec": SPEC_P.params(), "train_includes_holdout": False, "train_max_date": tmax,
+            "holdout_start": HOLD_START}}, dt.date(2023, 12, 1))
+        book.write(ledger, version, _good(book))
+        dec = pr.promote_check(ledger, CFG, version, holdout_result=GOOD_HOLDOUT)
+        assert not dec.approved and failed(dec) == {pr.CHECK_HOLDOUT}
+        assert "sizdi" in dec.checks[2].detail and tmax in dec.checks[2].detail
+
+
+def test_old_holdout_json_without_experiment_fails_closed(ledger, book):
+    """Eski surum sonuc (experiment alani yok): kanit yetersiz, KALDI."""
+    book.write(ledger, "good", _good(book))
+    old = {k: v for k, v in GOOD_HOLDOUT.items() if k != "experiment"}
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=old)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "experiment" in dec.checks[2].detail
+    # experiment var ama alanlar eksik: her biri ayri ayri KALDI
+    no_use = {**GOOD_HOLDOUT, "experiment": {k: v for k, v in GOOD_HOLDOUT["experiment"].items()
+                                             if k != "use_holdout"}}
+    assert failed(pr.promote_check(ledger, CFG, "good", holdout_result=no_use)) == {pr.CHECK_HOLDOUT}
+    no_start = {**GOOD_HOLDOUT, "experiment": {k: v for k, v in GOOD_HOLDOUT["experiment"].items()
+                                               if k != "holdout_start"}}
+    dec = pr.promote_check(ledger, CFG, "good", holdout_result=no_start)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "holdout_start eksik" in dec.checks[2].detail
+
+
+def test_challenger_without_train_max_date_fails_closed(ledger, book):
+    """Egitim kaydinda train_max_date yoksa (eski kayit) egitimin son tarihi kanitlanamaz: KALDI."""
+    reg.register_model(ledger, "old_rec", {"label": SPEC_P.label, "extra": {
+        "spec": SPEC_P.params(), "train_includes_holdout": False, "holdout_start": HOLD_START}}, dt.date(2023, 12, 1))
+    book.write(ledger, "old_rec", _good(book))
+    dec = pr.promote_check(ledger, CFG, "old_rec", holdout_result=GOOD_HOLDOUT)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "train_max_date yok" in dec.checks[2].detail
+
+
+def test_config_without_holdout_boundary_fails_closed(ledger, book):
+    """Yapilandirmada holdout_start hic yoksa sinama penceresi dogrulanamaz: KALDI (require_holdout_pass acik)."""
+    book.write(ledger, "good", _good(book))
+    cfg = copy.deepcopy(CFG)
+    cfg["holdout"] = {}
+    dec = pr.promote_check(ledger, cfg, "good", holdout_result=GOOD_HOLDOUT)
+    assert failed(dec) == {pr.CHECK_HOLDOUT} and "yapilandirmada holdout.holdout_start yok" in dec.checks[2].detail
 
 
 # ---------------------------------------------------------------- O2: canli golge iyilesmesi

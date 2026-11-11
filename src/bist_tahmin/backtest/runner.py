@@ -75,7 +75,11 @@ def run_experiment(
         base_frame = guard.filter_frame(ds.frame, "date", "end_date")
         baselines = lab.dataset_baseline_probs(base_frame, horizon_days=ds.horizon_days, label=spec.label)
         result = lab.evaluate(preds, baselines, label=spec.label, cfg=cfg, alpha=alpha, n_trials=n_trials, seed=seed)
-        result["experiment"] = {"id": exp_id, "family": family, "n_trials": n_trials, "holdout": guard.access_note()}
+        # holdout_start / use_holdout: terfi kosulu 3 bunlari sayisal/acik alan olarak okur (metin note'a bakmaz)
+        result["experiment"] = {
+            "id": exp_id, "family": family, "n_trials": n_trials, "holdout": guard.access_note(),
+            "holdout_start": guard.holdout_start.date().isoformat(), "use_holdout": bool(guard.use_holdout),
+        }
         if exp_id is not None:
             update_result(conn, exp_id, json.loads(lab.result_json(result)))
     except BaseException as exc:

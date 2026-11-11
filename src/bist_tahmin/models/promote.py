@@ -15,10 +15,12 @@ Kosullar (her birinin detail'i sayilari icerir; veri yetersizse ok=False ve nede
                   karsilastirma icin (champion varsa champion, her zaman baz oran) ayri: fark <= -min_improvement_brier
                   VE Bonferroni'li aralik (ci = 1 - alpha/n_trials) sifiri dislar ve ust uc < 0. Iki karsilastirma da
                   gecmeli.
-  sinama_kumesi  holdout_result (lab.evaluate ciktisi): challenger egitimi holdout'u DISARIDA tutmus olmali
-                  (models.params_json.extra.train_includes_holdout == False), holdout_result.run_info.spec challenger'in
-                  extra.spec'i ile ayni olmali, main.model_better ve excludes_zero. Kanit yoksa ok=False
-                  ('sinama kumesi kaniti yok'); terfi.require_holdout_pass False ise atlanir
+  sinama_kumesi  holdout_result (runner.run_experiment ciktisi): HEPSI gerekir, eksik/uyumsuz alan = KALDI:
+                  (a) experiment.use_holdout == True; (b) experiment.holdout_start == cfg holdout.holdout_start;
+                  (c) challenger extra.train_includes_holdout == False; (d) extra.train_max_date (kullanilan en son
+                  tarih, end_date dahil) < holdout_start; (e) run_info.spec == challenger extra.spec; (f) main.model_better
+                  ve excludes_zero. Kanit yoksa ok=False ('sinama kumesi kaniti yok'); terfi.require_holdout_pass False
+                  ise atlanir
   canli_golge     challenger'in kendi cozulmus FARKLI made_at gunu >= terfi.require_live_shadow_days VE ayni
                   eslesmis satirlarda baz orana karsi ortalama Brier farki < 0 (iyilesme)
   net_getiri      maliyet sonrasi kohort portfoyunun benchmark'a gore fazla getirisi (score=prob_up, en ust %20,
@@ -191,12 +193,54 @@ def _check_brier(base: pd.DataFrame, champ: pd.DataFrame | None, champion: str |
     return Check(CHECK_BRIER, all(sub.values()), detail, sub)
 
 
-def _check_holdout(holdout_result: dict | None, terfi: dict, ch_params: dict | None) -> Check:
+def _iso_day(v) -> str | None:
+    """Tarihi ISO gune (YYYY-MM-DD) normalize eder; yok ya da gecersizse None (fail-closed icin)."""
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        ts = pd.Timestamp(v)
+    except (TypeError, ValueError):
+        return None
+    if pd.isna(ts) or ts.tzinfo is not None:
+        return None
+    return ts.normalize().date().isoformat()
+
+
+def _check_holdout(holdout_result: dict | None, terfi: dict, ch_params: dict | None, cfg_hs: str | None) -> Check:
+    """Kosul 3 (sinama kumesi). KABUL icin hepsi gerekir; eksik ya da uyumsuz alan KALDI (fail-closed):
+    (a) holdout_result.experiment.use_holdout == True (terfi asamasi erisimi acikca yapilmis);
+    (b) experiment.holdout_start == cfg holdout.holdout_start (sonuc gercek yapilandirmanin sinama kumesinde uretilmis);
+    challenger egitimi: (c) train_includes_holdout == False, (d) train_max_date < holdout_start;
+    (e) holdout sonucu challenger ile ayni spec; (f) main: model baz orandan iyi ve sifirdan ayrisir."""
     if not bool(terfi.get("require_holdout_pass", True)):
         return Check(CHECK_HOLDOUT, True, "atlandi (terfi.require_holdout_pass=false)")
     if holdout_result is None or not isinstance(holdout_result, dict):
         return Check(CHECK_HOLDOUT, False, "sinama kumesi kaniti yok")
-    # 1) challenger egitimi holdout'u disarida tutmus olmali (kayit yoksa ya da bayrak yoksa dogrulanamaz)
+    # (a)+(b) erisim ve pencere: sonucun gercek sinama kumesinde uretildiginin kaniti
+    exp = holdout_result.get("experiment")
+    if not isinstance(exp, dict):
+        return Check(CHECK_HOLDOUT, False,
+                     "sonuc 'experiment' alani yok: use_holdout ve holdout_start dogrulanamadi "
+                     "(eski ya da bilinmeyen surumde uretilmis sonuc; fail-closed)")
+    if "use_holdout" not in exp:
+        return Check(CHECK_HOLDOUT, False,
+                     "experiment.use_holdout eksik: sinama kumesine erisimin acikca yapildigi dogrulanamadi")
+    if exp["use_holdout"] is not True:
+        return Check(CHECK_HOLDOUT, False,
+                     f"experiment.use_holdout={exp['use_holdout']!r}: sinama kumesi terfi asamasinda acilmamis "
+                     "(use_holdout=True gerekir)")
+    if "holdout_start" not in exp:
+        return Check(CHECK_HOLDOUT, False, "experiment.holdout_start eksik: sinama penceresi dogrulanamadi")
+    res_hs = _iso_day(exp["holdout_start"])
+    if res_hs is None:
+        return Check(CHECK_HOLDOUT, False, f"experiment.holdout_start gecersiz tarih: {exp['holdout_start']!r}")
+    if cfg_hs is None:
+        return Check(CHECK_HOLDOUT, False, "yapilandirmada holdout.holdout_start yok: sinama penceresi dogrulanamadi")
+    if res_hs != cfg_hs:
+        return Check(CHECK_HOLDOUT, False,
+                     f"holdout_start uyusmuyor (sonuc {res_hs}, yapilandirma {cfg_hs}): sonuc bu yapilandirmanin "
+                     "sinama kumesinde uretilmemis")
+    # (c) challenger egitimi holdout'u disarida tutmus olmali (kayit yoksa ya da bayrak yoksa dogrulanamaz)
     extra = (ch_params or {}).get("extra") or {}
     if "train_includes_holdout" not in extra:
         return Check(CHECK_HOLDOUT, False,
@@ -205,7 +249,18 @@ def _check_holdout(holdout_result: dict | None, terfi: dict, ch_params: dict | N
     if extra["train_includes_holdout"] is not False:
         return Check(CHECK_HOLDOUT, False,
                      "challenger egitimi sinama kumesini icerdi (train_includes_holdout=true): kanit gecersiz")
-    # 2) holdout sonucu ayni spec'ten olmali
+    # (d) egitimin kullandigi en son veri (end_date dahil) sinama kumesinden once bitmis olmali
+    if "train_max_date" not in extra:
+        return Check(CHECK_HOLDOUT, False,
+                     "challenger egitim kaydinda train_max_date yok: egitimin kullandigi son tarih dogrulanamadi "
+                     "(fail-closed)")
+    tmax = _iso_day(extra["train_max_date"])
+    if tmax is None:
+        return Check(CHECK_HOLDOUT, False, f"challenger train_max_date gecersiz: {extra['train_max_date']!r}")
+    if not pd.Timestamp(tmax) < pd.Timestamp(cfg_hs):
+        return Check(CHECK_HOLDOUT, False,
+                     f"challenger egitimi sinama penceresine sizdi: train_max_date {tmax} >= holdout_start {cfg_hs}")
+    # (e) holdout sonucu ayni spec'ten olmali
     run_info = holdout_result.get("run_info")
     h_spec = run_info.get("spec") if isinstance(run_info, dict) else None
     c_spec = extra.get("spec")
@@ -215,7 +270,7 @@ def _check_holdout(holdout_result: dict | None, terfi: dict, ch_params: dict | N
         return Check(CHECK_HOLDOUT, False,
                      f"holdout_result spec'i challenger ile uyusmuyor (holdout: {h_spec.get('name')!r}, "
                      f"challenger: {(c_spec or {}).get('name')!r})")
-    # 3) sonuc: model baz orandan iyi ve sifirdan ayrisan
+    # (f) sonuc: model baz orandan iyi ve sifirdan ayrisan
     main = holdout_result.get("main")
     if not isinstance(main, dict):
         return Check(CHECK_HOLDOUT, False, "sinama kumesi kaniti yok (holdout_result.main eksik/bos)")
@@ -335,7 +390,7 @@ def promote_check(
     checks = [
         _check_days(n_days, min_dates, len(matched)),
         _check_brier(matched, champ_pairs, champion, terfi, alpha, n_trials, seed, note),
-        _check_holdout(holdout_result, terfi, ch_params),
+        _check_holdout(holdout_result, terfi, ch_params, _iso_day((cfg.get("holdout") or {}).get("holdout_start"))),
         _check_shadow(own_days, shadow_req, matched),
         _check_net(matched, champ_pairs, champion, terfi, cost, cost_label),
     ]

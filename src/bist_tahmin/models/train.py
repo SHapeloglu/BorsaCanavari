@@ -151,12 +151,12 @@ def train_model(
     if not (rows["end_date"] <= as_of).all() or not (rows["date"] <= train_end).all():
         raise AssertionError("egitim satiri as_of/train_end sinirini asiyor (sizinti)")
     hs = None if holdout_start is None else _as_day(holdout_start, "holdout_start")
-    if excl is not None:
-        if not ((rows["date"] < excl).all() and (rows["end_date"] < excl).all()):
-            raise AssertionError("egitim satiri sinama kumesine (holdout) sizdi")
-        includes_holdout = False
-    else:  # bilerek dahil: gercekten holdout satiri var mi (holdout_start bilinmiyorsa dogrulanamaz -> True)
-        includes_holdout = True if hs is None else bool(((rows["date"] >= hs) | (rows["end_date"] >= hs)).any())
+    # kullanilan en son veri tarihi: etiket bitisi (end_date) dahil; egitim gercekte bu tarihe kadar bilgi gorur
+    train_max = max(rows["date"].max(), rows["end_date"].max()).date()
+    if excl is not None and not ((rows["date"] < excl).all() and (rows["end_date"] < excl).all()):
+        raise AssertionError("egitim satiri sinama kumesine (holdout) sizdi")
+    # bayrak cfg'den degil, gercek egitim verisinden: holdout_start bilinmiyorsa dogrulanamaz -> True (muhafazakar)
+    includes_holdout = True if hs is None else bool(train_max >= hs.date())
     y = rows[spec.label].to_numpy(dtype=float)
     if np.unique(y).size < 2:
         raise ValueError("egitim etiketi tek sinifli: model egitilemez")
@@ -170,6 +170,7 @@ def train_model(
         "n_train_days": int(rows["date"].nunique()),
         "train_date_min": rows["date"].min().date().isoformat(),
         "train_date_max": rows["date"].max().date().isoformat(),
+        "train_max_date": train_max.isoformat(),  # max(date, end_date): terfi kosulu 3 bunu holdout_start ile karsilastirir
         "train_base_rate": float(y.mean()),
         "seed": int(seed),
         "sklearn_version": sklearn.__version__,
