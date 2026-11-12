@@ -10,6 +10,7 @@ def cfg():
     return load_config("config/default.yaml")
 
 
+@pytest.mark.fast
 def test_default_config_is_valid(cfg):
     assert cfg["horizon_days"] == 5
     assert cfg["training"]["purge_days"] >= cfg["horizon_days"]
@@ -17,6 +18,7 @@ def test_default_config_is_valid(cfg):
     assert cfg["costs"]["commission_bps"] is None  # dogrulanmadan varsayilan: bos
 
 
+@pytest.mark.fast
 def test_purge_shorter_than_horizon_rejected(cfg):
     bad = copy.deepcopy(cfg)
     bad["training"]["purge_days"] = 3
@@ -25,6 +27,7 @@ def test_purge_shorter_than_horizon_rejected(cfg):
 
 
 @pytest.mark.parametrize("clip", [[0.5, 0.4], [-0.1, 0.9], [0.1, 1.2], [0.1]])
+@pytest.mark.fast
 def test_bad_prob_clip_rejected(cfg, clip):
     bad = copy.deepcopy(cfg)
     bad["prob_clip"] = clip
@@ -32,6 +35,7 @@ def test_bad_prob_clip_rejected(cfg, clip):
         validate(bad)
 
 
+@pytest.mark.fast
 def test_unknown_timezone_rejected(cfg):
     bad = copy.deepcopy(cfg)
     bad["timezone"] = "Mars/Olympus"
@@ -39,6 +43,7 @@ def test_unknown_timezone_rejected(cfg):
         validate(bad)
 
 
+@pytest.mark.fast
 def test_iid_bootstrap_rejected(cfg):
     bad = copy.deepcopy(cfg)
     bad["terfi"]["bootstrap"]["kind"] = "iid"
@@ -46,12 +51,14 @@ def test_iid_bootstrap_rejected(cfg):
         validate(bad)
 
 
+@pytest.mark.fast
 def test_missing_key_rejected(cfg):
     bad = {k: v for k, v in cfg.items() if k != "drift"}
     with pytest.raises(ConfigError, match="drift"):
         validate(bad)
 
 
+@pytest.mark.fast
 def test_missing_file(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "yok.yaml")

@@ -12,12 +12,14 @@ from bist_tahmin.data.universe import Membership, UniverseError, diff_membership
 D = dt.date
 
 
+@pytest.mark.fast
 def test_first_sync_adds_all_with_as_of():
     add, close = diff_membership([], ["B", "A"], D(2026, 11, 8))
     assert add == [Membership("A", D(2026, 11, 8)), Membership("B", D(2026, 11, 8))]
     assert close == []
 
 
+@pytest.mark.fast
 def test_removal_closes_open_row_with_as_of():
     rows = [("A", D(2026, 1, 1), None), ("B", D(2026, 1, 1), None)]
     add, close = diff_membership(rows, ["A"], D(2026, 11, 8))
@@ -25,23 +27,27 @@ def test_removal_closes_open_row_with_as_of():
     assert close == [Membership("B", D(2026, 1, 1), D(2026, 11, 8))]
 
 
+@pytest.mark.fast
 def test_no_change():
     rows = [{"ticker": "A", "valid_from": D(2026, 1, 1), "valid_to": None}]
     assert diff_membership(rows, ["a "], D(2026, 11, 8)) == ([], [])
 
 
+@pytest.mark.fast
 def test_closed_rows_ignored_and_readd_opens_new_row():
     rows = [Membership("A", D(2025, 1, 1), D(2025, 6, 1))]
     add, close = diff_membership(rows, ["A"], D(2026, 11, 8))
     assert add == [Membership("A", D(2026, 11, 8))] and close == []
 
 
+@pytest.mark.fast
 def test_close_never_precedes_valid_from():
     rows = [("A", D(2026, 11, 8), None)]
     _, close = diff_membership(rows, [], D(2026, 11, 1))
     assert close[0].valid_to >= close[0].valid_from
 
 
+@pytest.mark.fast
 def test_members_on_half_open_interval():
     rows = [Membership("A", D(2026, 1, 1), D(2026, 6, 1)), Membership("B", D(2026, 3, 1))]
     assert members_on(rows, D(2025, 12, 31)) == []
@@ -58,11 +64,13 @@ class FakeSource:
         return self.comps
 
 
+@pytest.mark.fast
 def test_fetch_components_empty_is_error():
     with pytest.raises(UniverseError):
         fetch_components(FakeSource([]))
 
 
+@pytest.mark.fast
 def test_sync_universe_db_roundtrip_and_idempotent(app_conn):
     idx = "TESTIDX_SYNC"
     as_of = D(2026, 11, 8)
@@ -80,6 +88,7 @@ def test_sync_universe_db_roundtrip_and_idempotent(app_conn):
     assert len(rows) == 3
 
 
+@pytest.mark.fast
 def test_sync_universe_dry_run_writes_nothing(app_conn):
     idx = "TESTIDX_DRY"
     add, _ = store.sync_universe(app_conn, ["AAA"], D(2026, 11, 8), index_name=idx, dry_run=True)

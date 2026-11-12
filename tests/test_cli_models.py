@@ -80,6 +80,7 @@ def _dataset(path: Path) -> Path:
     return path
 
 
+@pytest.mark.fast
 def test_models_help_lists_subcommands(capsys):
     with pytest.raises(SystemExit) as exc:
         _bist("models", "--help")
@@ -89,6 +90,7 @@ def test_models_help_lists_subcommands(capsys):
         assert sub in out
 
 
+@pytest.mark.fast
 def test_no_database_url_exits_2(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     for argv in (
@@ -124,6 +126,7 @@ def test_promote_without_confirm_does_nothing(db):
     assert db.execute("SELECT count(*) FROM runs WHERE job = 'models-promote'").fetchone()[0] == 0
 
 
+@pytest.mark.fast
 def test_promote_with_confirm_is_refused_when_check_fails(db):
     _register(db, "m_p2")
     assert _bist("models", "promote", "--challenger", "m_p2", "--confirm") == 2
@@ -193,6 +196,7 @@ def test_promote_defaults_to_registry_champion_and_refuses_other_champion(db, ca
     assert reg.get_model(db, "X").role == "champion" and reg.get_model(db, "C").role == "retired"
 
 
+@pytest.mark.fast
 def test_promote_lock_blocks_concurrent_decider_and_decides_on_fresh_champion(db, tmp_path, capsys):
     """Kilit semantigi iki gercek baglantiyla deterministik olarak sinanir (iş parcacigi yok: onceki iş
     parcacikli surum paylasilan gomulu Postgres'i cokertiyordu). (1) Kilit alindiginda digeri alamaz; (2) ardisik

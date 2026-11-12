@@ -82,6 +82,7 @@ def test_state_upsert_roundtrip_and_json_safety(mdb):
     assert conn.execute("SELECT count(*) FROM system_state WHERE key='k1'").fetchone()[0] == 1
 
 
+@pytest.mark.fast
 def test_to_jsonable_output_is_strict_json():
     out = to_jsonable({"a": [float("nan"), np.float32(1.5), pd.NaT]})
     json.dumps(out, allow_nan=False)
@@ -93,6 +94,7 @@ def _idx(n):
     return pd.date_range("2026-01-05", periods=n, freq="B", name="made_at")
 
 
+@pytest.mark.fast
 def test_breaker_known_relative_drawdown_value():
     net = pd.Series([-0.05] * 5, index=_idx(5))          # her kohort 1/5 sermaye: 5 * (-0.01) => esdeger 0.95
     bench = pd.Series([0.0] * 5, index=_idx(5))
@@ -101,6 +103,7 @@ def test_breaker_known_relative_drawdown_value():
     assert not evaluate_breaker(net, bench, 5, 0.06).tripped
 
 
+@pytest.mark.fast
 def test_breaker_threshold_is_strict_and_uses_relative_not_absolute():
     # Piyasa ve model ayni oranda duser: mutlak dusus buyuk, GORELI dusus 0 => tetiklenmez.
     both = pd.Series([-0.05] * 30, index=_idx(30))
@@ -111,6 +114,7 @@ def test_breaker_threshold_is_strict_and_uses_relative_not_absolute():
                                 5, 0.10).tripped
 
 
+@pytest.mark.fast
 def test_breaker_measures_peak_to_trough_not_from_start():
     net = pd.Series([0.10] * 10 + [-0.10] * 10, index=_idx(20))
     bench = pd.Series([0.0] * 20, index=_idx(20))
@@ -119,6 +123,7 @@ def test_breaker_measures_peak_to_trough_not_from_start():
     assert v.relative_drawdown == pytest.approx(1 - 1 / 1.2) and v.tripped
 
 
+@pytest.mark.fast
 def test_breaker_no_data_does_not_trip_and_invalid_equity_does():
     v = evaluate_breaker(pd.Series(dtype=float), pd.Series(dtype=float), 5, 0.10)
     assert not v.tripped and "kohort yok" in v.detail
@@ -128,6 +133,7 @@ def test_breaker_no_data_does_not_trip_and_invalid_equity_does():
         evaluate_breaker(pd.Series([0.0]), pd.Series([0.0]), 5, 0.0)
 
 
+@pytest.mark.fast
 def test_breaker_misaligned_and_nan_cohorts_are_dropped():
     net = pd.Series([-0.05, np.nan, -0.05], index=_idx(3))
     bench = pd.Series([0.0, 0.0], index=_idx(3)[[0, 2]])
@@ -147,6 +153,7 @@ def _resolved_frame(version="m1", days=30, bad=True, tickers=("A", "B", "C", "D"
     return pd.DataFrame(rows)
 
 
+@pytest.mark.fast
 def test_model_cohort_returns_and_after_cutoff():
     df = _resolved_frame()
     net, bench = breaker.model_cohort_returns(df, "m1")
@@ -158,6 +165,7 @@ def test_model_cohort_returns_and_after_cutoff():
     assert breaker.model_cohort_returns(df, "baska")[0].empty
 
 
+@pytest.mark.fast
 def test_breaker_cost_is_promote_default_when_costs_missing():
     """Maliyet null iken devre kesici 0 degil, terfi ile ayni 10 bps varsayimini kullanir (tutarlilik, muhafazakar)."""
     assert breaker.configured_cost_bps({}) == pr.DEFAULT_COST_BPS == 10.0
@@ -166,6 +174,7 @@ def test_breaker_cost_is_promote_default_when_costs_missing():
     assert breaker.configured_cost_bps({"costs": {"commission_bps": 8, "spread_bps": 4}}) == 12.0
 
 
+@pytest.mark.fast
 def test_evaluate_model_trips_on_bad_model_only():
     bad = breaker.evaluate_model(_resolved_frame(bad=True), "m1", CFG)
     good = breaker.evaluate_model(_resolved_frame(bad=False), "m1", CFG)
@@ -251,6 +260,7 @@ def _drift_frame(n_days=70, model_noise=0.0, tickers=("A", "B", "C", "D"), seed=
     return pd.DataFrame(rows)
 
 
+@pytest.mark.fast
 def test_drift_after_cutoff_ignores_days_before_reset():
     # gurultu yalniz ilk 60 gunde: tum pencere alarm verir; reset gununden (dahil) sonra temiz 10 gun yetersiz -> alarm yok
     df = _drift_frame(n_days=70, model_noise=0.4, late_only=True)
@@ -263,6 +273,7 @@ def test_drift_after_cutoff_ignores_days_before_reset():
     assert far.alert is False and far.n_days == 0
 
 
+@pytest.mark.fast
 def test_rolling_brier_gap_known_value():
     # tek hisse, 3 gun, etiketler 1: referans p=0.5 -> Brier 0.25; model p=0.9 -> 0.01; fark -0.24
     days = pd.bdate_range("2026-03-02", periods=3)
@@ -274,18 +285,21 @@ def test_rolling_brier_gap_known_value():
     assert gap == pytest.approx(0.01 - 0.25)
 
 
+@pytest.mark.fast
 def test_gap_zero_when_model_equals_reference_and_positive_when_worse():
     assert drift.rolling_brier_gap(_drift_frame(model_noise=0.0), 60, "m1") == pytest.approx(0.0)
     worse = drift.rolling_brier_gap(_drift_frame(model_noise=0.3), 60, "m1")
     assert worse > 0.01 and drift.drift_alert(worse, 0.01)
 
 
+@pytest.mark.fast
 def test_window_uses_only_the_last_n_distinct_dates():
     df = _drift_frame(n_days=70, model_noise=0.4, late_only=True)     # gurultu yalniz ilk 60 gunde; son 10 gun temiz
     assert drift.rolling_brier_gap(df, 10, "m1") == pytest.approx(0.0)
     assert drift.rolling_brier_gap(df, 70, "m1") > 0.01
 
 
+@pytest.mark.fast
 def test_insufficient_days_gives_nan_and_no_alert():
     df = _drift_frame(n_days=20, model_noise=0.4)
     gap = drift.rolling_brier_gap(df, 60, "m1")
@@ -294,11 +308,13 @@ def test_insufficient_days_gives_nan_and_no_alert():
     assert res.alert is False and "veri yetersiz" in res.note and res.n_days == 20
 
 
+@pytest.mark.fast
 def test_drift_alert_threshold_semantics():
     assert drift.drift_alert(0.0101, 0.01) and not drift.drift_alert(0.01, 0.01) and not drift.drift_alert(-0.5, 0.01)
     assert not drift.drift_alert(None, 0.01) and not drift.drift_alert(float("nan"), 0.01)
 
 
+@pytest.mark.fast
 def test_drift_check_uses_config_and_flags_bad_model():
     res = drift.drift_check(_drift_frame(model_noise=0.35), "m1", CFG)
     assert res.alert and res.gap > CFG["drift"]["brier_over_base_rate_alert"] and res.n_days == 60
@@ -306,6 +322,7 @@ def test_drift_check_uses_config_and_flags_bad_model():
     assert res.as_dict()["model_version"] == "m1"
 
 
+@pytest.mark.fast
 def test_drift_matches_only_common_rows():
     df = _drift_frame(n_days=65, model_noise=0.0)
     # model, referansin bulunmadigi ekstra bir gunde cok kotu: eslesmeyen satir sayilmaz

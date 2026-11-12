@@ -21,6 +21,7 @@ def _panel(n_days=20, n_names=10, seed=5):
     return pd.concat(frames, ignore_index=True)
 
 
+@pytest.mark.fast
 def test_columns_and_grid_order():
     out = cost_sensitivity(_panel(), [40, 0, 20, 10])
     assert list(out.columns) == list(SENSITIVITY_COLS)
@@ -29,6 +30,7 @@ def test_columns_and_grid_order():
     assert len(cost_sensitivity(_panel(), DEFAULT_GRID_BPS)) == 4
 
 
+@pytest.mark.fast
 def test_matches_simulate_for_each_cost():
     df = _panel()
     out = cost_sensitivity(df, [0, 10, 20, 40], top_frac=0.3)
@@ -42,6 +44,7 @@ def test_matches_simulate_for_each_cost():
         assert row["n_cohorts"] == s["n_cohorts"]
 
 
+@pytest.mark.fast
 def test_monotone_in_cost_and_exact_slope():
     out = cost_sensitivity(_panel(), [0, 10, 20, 40])
     assert out["mean_net"].is_monotonic_decreasing
@@ -54,6 +57,7 @@ def test_monotone_in_cost_and_exact_slope():
     assert out["mean_gross"].nunique() == 1 and out["mean_benchmark"].nunique() == 1
 
 
+@pytest.mark.fast
 def test_hand_computed_row():
     df = pd.DataFrame({
         "made_at": pd.Timestamp("2024-03-01"),
@@ -68,6 +72,7 @@ def test_hand_computed_row():
     assert out.loc[10.0, "hit_rate"] == 1.0
 
 
+@pytest.mark.fast
 def test_hit_rate_drops_when_cost_exceeds_edge():
     # brut fazla getiri 0.001; 10 bps gidis-donus 0.002 -> kohort benchmark'i gecemez
     df = pd.DataFrame({
@@ -82,6 +87,7 @@ def test_hit_rate_drops_when_cost_exceeds_edge():
     assert out.loc[40.0, "hit_rate"] == 0.0     # .0048 - .008 < 0
 
 
+@pytest.mark.fast
 def test_validation_and_purity():
     df = _panel()
     snap = df.copy(deep=True)
@@ -105,6 +111,7 @@ def test_validation_and_purity():
     pd.testing.assert_frame_equal(df, snap)
 
 
+@pytest.mark.fast
 def test_empty_cohorts_gives_nan_rows():
     df = pd.DataFrame({"made_at": pd.Timestamp("2024-03-01"), "ticker": list("AB"),
                        "score": [1.0, 2.0], "tradable_ret": [0.1, 0.0]})

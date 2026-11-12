@@ -27,12 +27,14 @@ def _resolve(conn, pid, resolved_at="2026-11-09", ret=0.02, label=1):
     ("made_at", "'2026-01-01'"),
     ("model_version", "'x'"),
 ])
+@pytest.mark.fast
 def test_app_cannot_update_prediction_fields(app_conn, new_prediction, insert_prediction, column, value):
     pid = insert_prediction(app_conn, new_prediction())
     with pytest.raises(errors.InsufficientPrivilege):
         app_conn.execute(f"UPDATE predictions SET {column} = {value} WHERE id = %s", (pid,))
 
 
+@pytest.mark.fast
 def test_app_cannot_delete_or_truncate(app_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())
     with pytest.raises(errors.InsufficientPrivilege):
@@ -41,6 +43,7 @@ def test_app_cannot_delete_or_truncate(app_conn, new_prediction, insert_predicti
         app_conn.execute("TRUNCATE predictions")
 
 
+@pytest.mark.fast
 def test_app_cannot_drop_or_disable_guard(app_conn):
     with pytest.raises(errors.InsufficientPrivilege):
         app_conn.execute("DROP TRIGGER predictions_guard ON predictions")
@@ -50,6 +53,7 @@ def test_app_cannot_drop_or_disable_guard(app_conn):
 
 # --- Tetikleyici katmani (tablo sahibi bile degistiremez) ------------------------
 
+@pytest.mark.fast
 def test_owner_still_blocked_by_trigger(owner_conn, new_prediction, insert_prediction):
     pid = insert_prediction(owner_conn, new_prediction())
     with pytest.raises(errors.RestrictViolation):
@@ -64,6 +68,7 @@ def test_owner_still_blocked_by_trigger(owner_conn, new_prediction, insert_predi
 
 # --- Cozum: tek seferlik -----------------------------------------------------------
 
+@pytest.mark.fast
 def test_resolution_is_write_once(app_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())
     _resolve(app_conn, pid)
@@ -73,6 +78,7 @@ def test_resolution_is_write_once(app_conn, new_prediction, insert_prediction):
         _resolve(app_conn, pid, ret=-0.05, label=0)
 
 
+@pytest.mark.fast
 def test_resolution_requires_complete_fields_and_later_date(app_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())
     # eksik alan: CHECK ((resolved_at IS NULL) = (label_up IS NULL)) ya da tetikleyici reddeder
@@ -93,6 +99,7 @@ _SIX_VALUES = {"resolved_at": "'2026-11-09'", "realized_ret": "0.02", "realized_
 
 
 @pytest.mark.parametrize("missing", _SIX_FIELDS)
+@pytest.mark.fast
 def test_resolution_requires_all_six_fields(app_conn, new_prediction, insert_prediction, missing):
     pid = insert_prediction(app_conn, new_prediction())
     sets = ", ".join(f"{c}={v}" for c, v in _SIX_VALUES.items() if c != missing)
@@ -103,6 +110,7 @@ def test_resolution_requires_all_six_fields(app_conn, new_prediction, insert_pre
     _resolve(app_conn, pid)
 
 
+@pytest.mark.fast
 def test_early_resolution_rejected_but_due_accepted(app_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())  # made_at 2026-11-02, H=5 -> en erken 2026-11-07
     with pytest.raises(errors.RestrictViolation):
@@ -114,6 +122,7 @@ def test_early_resolution_rejected_but_due_accepted(app_conn, new_prediction, in
     assert str(app_conn.execute("SELECT resolved_at FROM predictions WHERE id=%s", (pid,)).fetchone()[0]) == "2026-11-07"
 
 
+@pytest.mark.fast
 def test_insert_cannot_carry_resolution(app_conn, new_prediction):
     row = new_prediction()
     with pytest.raises((errors.RestrictViolation, errors.CheckViolation)):
@@ -127,6 +136,7 @@ def test_insert_cannot_carry_resolution(app_conn, new_prediction):
 
 # --- Idempotans ve girdi dogrulama -----------------------------------------------------
 
+@pytest.mark.fast
 def test_duplicate_insert_is_idempotent(app_conn, new_prediction, insert_prediction):
     row = new_prediction()
     first = insert_prediction(app_conn, row)
@@ -137,11 +147,13 @@ def test_duplicate_insert_is_idempotent(app_conn, new_prediction, insert_predict
 
 
 @pytest.mark.parametrize("bad", [-0.01, 1.01])
+@pytest.mark.fast
 def test_prob_up_must_be_probability(app_conn, new_prediction, insert_prediction, bad):
     with pytest.raises(errors.CheckViolation):
         insert_prediction(app_conn, new_prediction(prob_up=bad))
 
 
+@pytest.mark.fast
 def test_app_role_has_safety_limits(bist_db):
     admin, _ = bist_db
     with psycopg.connect(admin, autocommit=True) as conn:
@@ -161,6 +173,7 @@ def _raw_insert(conn, ticker, made_at, extra_cols="", extra_vals=""):
     ).fetchone()[0]
 
 
+@pytest.mark.fast
 def test_recorded_at_is_db_clock_and_cannot_be_forged(app_conn, new_prediction):
     import datetime as dt
     ticker = new_prediction()["ticker"]
@@ -172,11 +185,13 @@ def test_recorded_at_is_db_clock_and_cannot_be_forged(app_conn, new_prediction):
     assert created.year == 2020                                                          # created_at serbest kalir
 
 
+@pytest.mark.fast
 def test_recorded_at_defaults_without_being_sent(app_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())
     assert app_conn.execute("SELECT recorded_at IS NOT NULL FROM predictions WHERE id=%s", (pid,)).fetchone()[0]
 
 
+@pytest.mark.fast
 def test_future_made_at_rejected(app_conn, new_prediction):
     ticker = new_prediction()["ticker"]
     with pytest.raises(errors.RestrictViolation):
@@ -187,6 +202,7 @@ def test_future_made_at_rejected(app_conn, new_prediction):
     assert _raw_insert(app_conn, ticker, today) is not None
 
 
+@pytest.mark.fast
 def test_recorded_at_is_immutable(app_conn, owner_conn, new_prediction, insert_prediction):
     pid = insert_prediction(app_conn, new_prediction())
     with pytest.raises(errors.InsufficientPrivilege):
@@ -195,6 +211,7 @@ def test_recorded_at_is_immutable(app_conn, owner_conn, new_prediction, insert_p
         owner_conn.execute("UPDATE predictions SET recorded_at = '2020-01-01' WHERE id = %s", (pid,))
 
 
+@pytest.mark.fast
 def test_migration_005_applied_once_and_idempotent(bist_db):
     from bist_tahmin.db import plan_init, run_init, with_overrides
     admin, name = bist_db

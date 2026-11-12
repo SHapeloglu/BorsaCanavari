@@ -34,4 +34,4 @@ packages = ["src/bist_tahmin"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["network: gercek borsapy istegi yapar (BIST_NETWORK_TESTS=1 ile calisir)"]
+markers = ["network: gercek borsapy istegi yapar (BIST_NETWORK_TESTS=1 ile calisir)", "fast: hizli cekirdek alt kume (pytest -m fast)"]

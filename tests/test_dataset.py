@@ -110,6 +110,7 @@ def test_schema_order_and_dtypes(world):
 
 # --- tarihli uyelik --------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_dated_membership_only_in_range():
     hist, xu, cal = _world(("AAA", "BBB", "CCC"))
     d70, d100 = cal.days[70].date(), cal.days[100].date()
@@ -198,6 +199,7 @@ def _label_world():
     return hist, _frame(x_c, dates), TradingCalendar(dates), (a_c, a_o, b_c, b_o, x_c)
 
 
+@pytest.mark.fast
 def test_labels_hand_computed():
     hist, xu, cal, (a_c, a_o, b_c, b_o, x_c) = _label_world()
     ds = _build(hist, xu, cal, _members(hist), cfg={"horizon_days": 5, "label_threshold": 0.04})
@@ -232,6 +234,7 @@ def test_labels_hand_computed():
     assert head["fwd_ret"].notna().all() and head["end_date"].notna().all()
 
 
+@pytest.mark.fast
 def test_labels_nan_when_price_missing_and_open_adj_fallback():
     hist, xu, cal, (a_c, a_o, *_rest) = _label_world()
     # A'nin vade gunu (konum 64) kapanisi yok -> fwd NaN; B'de open_adj kolonu yok -> open*close_adj/close
@@ -246,6 +249,7 @@ def test_labels_nan_when_price_missing_and_open_adj_fallback():
         hist["B"]["close_adj"].iloc[64] / (hist["B"]["close_adj"].iloc[60] * 1.01) - 1, rel=1e-9)
 
 
+@pytest.mark.fast
 def test_compute_labels_horizon_one_and_boundaries():
     c = np.array([10.0, 11.0, 9.9, np.nan, 12.0])
     o = np.array([10.0, 10.5, 10.0, 11.0, 11.5])
@@ -260,6 +264,7 @@ def test_compute_labels_horizon_one_and_boundaries():
 
 # --- sizinti ayrimi ---------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_features_do_not_depend_on_future_but_labels_do():
     hist, xu, cal = _world(("AAA", "BBB", "CCC"))
     mem = _members(hist)
@@ -281,6 +286,7 @@ def test_features_do_not_depend_on_future_but_labels_do():
     pd.testing.assert_series_equal(before_b.loc[early, "fwd_ret"], before_o.loc[early, "fwd_ret"])
 
 
+@pytest.mark.fast
 def test_feature_columns_never_include_labels():
     assert not set(FEATURE_NAMES) & {"end_date", "fwd_ret", "fwd_rel_ret", "tradable_ret", "label_up", "label_rel_up"}
 
@@ -296,6 +302,7 @@ def _leaky_forward_return(histories, xu100, made_at, calendar):
     return FeatureSet(made_at=base.made_at, rows=rows, excluded=base.excluded)
 
 
+@pytest.mark.fast
 def test_preflight_catches_leaky_feature_fn():
     hist, xu, cal = _world(("AAA", "BBB", "CCC"))
     mem = _members(hist)
@@ -317,6 +324,7 @@ def test_preflight_passes_default_and_records_dates():
 
 # --- kaydet/yukle -----------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_save_load_roundtrip(tmp_path, world):
     ds = world[4]
     p = tmp_path / "sub" / "ds.pkl"
@@ -329,6 +337,7 @@ def test_save_load_roundtrip(tmp_path, world):
     assert back.meta["feature_version"] == FEATURE_VERSION
 
 
+@pytest.mark.fast
 def test_load_rejects_foreign_pickle(tmp_path):
     p = tmp_path / "x.pkl"
     pd.to_pickle({"hello": 1}, p)
@@ -336,6 +345,7 @@ def test_load_rejects_foreign_pickle(tmp_path):
         load_dataset(p)
 
 
+@pytest.mark.fast
 def test_empty_when_no_members():
     hist, xu, cal = _world(("AAA",))
     ds = _build(hist, xu, cal, [])

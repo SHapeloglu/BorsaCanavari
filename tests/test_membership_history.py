@@ -21,10 +21,12 @@ def hist():
     return read_history_csv()
 
 
+@pytest.mark.fast
 def test_current_members_equal_known_xu030(hist):
     assert {m.ticker for m in hist if m.valid_to is None} == CURRENT
 
 
+@pytest.mark.fast
 def test_exactly_30_members_on_every_day_across_history(hist):
     dates = sorted({m.valid_from for m in hist} | {m.valid_to for m in hist if m.valid_to})
     probes = {d for d in dates} | {d - dt.timedelta(days=1) for d in dates if d > D(2019, 7, 1)}
@@ -33,6 +35,7 @@ def test_exactly_30_members_on_every_day_across_history(hist):
     assert not bad, bad
 
 
+@pytest.mark.fast
 def test_no_overlapping_intervals_per_ticker(hist):
     by = {}
     for m in hist:
@@ -44,12 +47,14 @@ def test_no_overlapping_intervals_per_ticker(hist):
     assert all(m.valid_to is None or m.valid_to > m.valid_from for m in hist)
 
 
+@pytest.mark.fast
 def test_history_starts_2019_07_and_old_codes_are_mapped(hist):
     assert min(m.valid_from for m in hist) == D(2019, 7, 1)
     tickers = {m.ticker for m in hist}
     assert "KOZAL" not in tickers and "KOZAA" not in tickers and {"TRALT", "TRMET"} <= tickers
 
 
+@pytest.mark.fast
 def test_known_official_changes(hist):
     on = lambda d: set(members_on(hist, d))                                    # noqa: E731
     assert "ENJSA" not in on(D(2019, 8, 1)) and "TSKB" in on(D(2019, 8, 1))    # 2019-T3: TSKB girdi, ENJSA cikti
@@ -65,6 +70,7 @@ def M(t, a, b=None):
     return Membership(t, a, b)
 
 
+@pytest.mark.fast
 def test_plan_pulls_open_row_earlier_and_inserts_closed_rows():
     existing = [M("AAA", D(2026, 11, 8))]
     target = [M("AAA", D(2019, 7, 1)), M("BBB", D(2019, 7, 1), D(2021, 1, 1)), M("BBB", D(2023, 1, 1))]
@@ -73,6 +79,7 @@ def test_plan_pulls_open_row_earlier_and_inserts_closed_rows():
     assert set(ins) == {M("BBB", D(2019, 7, 1), D(2021, 1, 1)), M("BBB", D(2023, 1, 1))}
 
 
+@pytest.mark.fast
 def test_plan_is_idempotent_and_conflicts_are_refused():
     target = [M("AAA", D(2019, 7, 1)), M("BBB", D(2019, 7, 1), D(2021, 1, 1))]
     assert plan_history_load(target, target) == ([], [])
@@ -82,6 +89,7 @@ def test_plan_is_idempotent_and_conflicts_are_refused():
         plan_history_load([M("CCC", D(2020, 1, 1), D(2022, 1, 1))], [M("CCC", D(2019, 1, 1), D(2021, 1, 1))])
 
 
+@pytest.mark.fast
 def test_load_membership_history_db_idempotent_dry_run_and_no_delete(app_conn):
     idx = f"TEST_{uuid.uuid4().hex[:8]}"
     a, b = f"A{uuid.uuid4().hex[:6].upper()}", f"B{uuid.uuid4().hex[:6].upper()}"

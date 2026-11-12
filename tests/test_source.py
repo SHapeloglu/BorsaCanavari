@@ -30,6 +30,7 @@ def _borsapy_like(closes, start="2026-05-11", mult=1.0):
     )
 
 
+@pytest.mark.fast
 def test_normalize_index_and_columns():
     raw = _borsapy_like([10, 11, 12])
     adj = _borsapy_like([5, 5.5, 6])
@@ -44,11 +45,13 @@ def test_normalize_index_and_columns():
     assert out.index.is_monotonic_increasing and out.index.is_unique
 
 
+@pytest.mark.fast
 def test_normalize_without_adj_copies_close():
     out = normalize_frame(_borsapy_like([10, 11]), None)
     assert out["close_adj"].tolist() == [10, 11]
 
 
+@pytest.mark.fast
 def test_normalize_drops_duplicate_dates_keeps_last():
     raw = _borsapy_like([10, 11, 12])
     dup = pd.concat([raw, raw.iloc[[1]].assign(Close=99.0)]).sort_index()
@@ -56,11 +59,13 @@ def test_normalize_drops_duplicate_dates_keeps_last():
     assert out.index.is_unique and out.loc["2026-05-12", "close"] == 99.0
 
 
+@pytest.mark.fast
 def test_normalize_empty():
     out = normalize_frame(pd.DataFrame(), None)
     assert out.empty and list(out.columns) == COLUMNS and out.index.name == "date"
 
 
+@pytest.mark.fast
 def test_bonus_events_ratio():
     splits = pd.DataFrame(
         {"BonusFromCapital": [100.0, 0.0, 0.0], "BonusFromDividend": [0.0, 20.0, 0.0], "RightsIssue": [0, 0, 30.0]},
@@ -75,11 +80,13 @@ def _frame(close, close_adj):
     return pd.DataFrame({"close": close, "close_adj": close_adj}, index=idx)
 
 
+@pytest.mark.fast
 def test_check_raw_passes_when_unadjusted():
     df = _frame([800.0, 810.0, 405.0, 400.0], [400.0, 405.0, 405.0, 400.0])
     check_raw_vs_adjusted(df, [(pd.Timestamp("2026-05-13"), 2.0)], "X")  # hata yok
 
 
+@pytest.mark.fast
 def test_check_raw_raises_when_raw_equals_adjusted():
     """borsapy adjust=False sessizce duzeltmeli seri dondururse (splits alinamadi) yakalanir."""
     df = _frame([400.0, 405.0, 405.0, 400.0], [400.0, 405.0, 405.0, 400.0])
@@ -87,11 +94,13 @@ def test_check_raw_raises_when_raw_equals_adjusted():
         check_raw_vs_adjusted(df, [(pd.Timestamp("2026-05-13"), 2.0)], "X")
 
 
+@pytest.mark.fast
 def test_check_raw_ignores_events_outside_range():
     df = _frame([400.0, 405.0], [400.0, 405.0])
     check_raw_vs_adjusted(df, [(pd.Timestamp("2020-01-01"), 2.0)], "X")
 
 
+@pytest.mark.fast
 def test_borsapy_source_splits_failure_is_error(monkeypatch):
     """splits alinamazsa ham fiyat dogrulanamaz: sessizce close=close_adj yazmak yerine hata."""
     class FakeTicker:
@@ -162,6 +171,7 @@ def _source(bp):
     return src
 
 
+@pytest.mark.fast
 def test_splits_fetched_once_per_ticker_in_fetch_flow():
     """history + corporate_actions (fetch.py akisi): splits gercek cagrisi hisse basina bir kez."""
     bp = _CountingBp()
@@ -173,6 +183,7 @@ def test_splits_fetched_once_per_ticker_in_fetch_flow():
     assert df["close_adj"].tolist() == [400, 405, 405, 400]
 
 
+@pytest.mark.fast
 def test_splits_cache_is_per_ticker_and_per_instance():
     bp = _CountingBp()
     src = _source(bp)
@@ -184,6 +195,7 @@ def test_splits_cache_is_per_ticker_and_per_instance():
     assert other._bp.fetches == 1  # baska ornek kendi onbellegini kurar
 
 
+@pytest.mark.fast
 def test_splits_failure_raises_and_is_not_cached():
     bp = _CountingBp(fail_times=1)
     src = _source(bp)
@@ -195,6 +207,7 @@ def test_splits_failure_raises_and_is_not_cached():
     assert "BIMAS" in src._splits_cache
 
 
+@pytest.mark.fast
 def test_corporate_actions_failure_propagates_unchanged_and_not_cached():
     """corporate_actions eskiden splits hatasini sarmiyordu; bu davranis korunur ve onbellek bos kalir."""
     bp = _CountingBp(fail_times=1)

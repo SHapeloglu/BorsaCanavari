@@ -36,6 +36,7 @@ def _roles(conn):
     return dict(conn.execute("SELECT version, role FROM models").fetchall())
 
 
+@pytest.mark.fast
 def test_register_and_get_roundtrip(db):
     conn, _ = db
     rec = _reg(conn, "m1")
@@ -45,6 +46,7 @@ def test_register_and_get_roundtrip(db):
     assert reg.get_model(conn, "yok") is None
 
 
+@pytest.mark.fast
 def test_register_duplicate_raises_and_does_not_overwrite(db):
     conn, _ = db
     _reg(conn, "m1")
@@ -80,6 +82,7 @@ def test_list_and_active_filters_ordered_by_trained_at(db):
         reg.list_models(conn, ["bogus"])
 
 
+@pytest.mark.fast
 def test_promote_swaps_champion_atomically(db):
     conn, _ = db
     _reg(conn, "c1")
@@ -193,6 +196,7 @@ def test_works_inside_caller_transaction_and_rolls_back(db):
     assert _roles(conn) == {"c1": "challenger"}
 
 
+@pytest.mark.fast
 def test_concurrent_promotes_leave_exactly_one_champion(db):
     conn, info = db
     for i in range(6):

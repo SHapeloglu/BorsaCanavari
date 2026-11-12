@@ -34,6 +34,7 @@ def _result(net_rets, bench_rets=None):
 
 # ------------------------------------------------------------ secim kurali
 
+@pytest.mark.fast
 def test_select_top_ceil():
     d = pd.DataFrame({"score": [0.1, 0.9, 0.5, 0.7, 0.3, 0.2, 0.8, 0.4, 0.6, 0.0]})
     # n=10, 0.25 -> ceil(2.5) = 3: en yuksek uc skor 0.9, 0.8, 0.7
@@ -46,6 +47,7 @@ def test_select_top_ceil():
     assert len(select_top(d, 1.0)) == 10
 
 
+@pytest.mark.fast
 def test_select_top_float_artifact_does_not_round_up():
     # 0.1 * 30 = 3.0000000000000004; ceil naif olarak 4 verirdi
     d = pd.DataFrame({"score": np.arange(30, dtype=float)})
@@ -53,6 +55,7 @@ def test_select_top_float_artifact_does_not_round_up():
     assert len(select_top(d, 0.2)) == 6
 
 
+@pytest.mark.fast
 def test_select_top_includes_all_ties_at_threshold():
     d = pd.DataFrame({"score": [0.6, 0.6, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4]})
     # k=1 ama esik 0.6'da iki esit skor: ikisi de secilir
@@ -63,6 +66,7 @@ def test_select_top_includes_all_ties_at_threshold():
     assert len(select_top(d, 0.3)) == 10
 
 
+@pytest.mark.fast
 def test_select_top_ignores_nan_scores_and_validates():
     d = pd.DataFrame({"score": [np.nan, 3.0, 1.0, 2.0, np.nan]})
     assert set(select_top(d, 0.34)) == {1, 3}  # n=3 gecerli, ceil(1.02)=2
@@ -76,6 +80,7 @@ def test_select_top_ignores_nan_scores_and_validates():
 
 # ------------------------------------------------------------ simulasyon
 
+@pytest.mark.fast
 def test_hand_computed_single_day():
     df = _day("2024-03-01", [5, 4, 3, 2, 1], [0.10, 0.02, 0.0, -0.02, -0.04])
     r = simulate_cohort_portfolio(df, top_frac=0.2, cost_bps=20.0)
@@ -103,6 +108,7 @@ def test_hand_computed_single_day():
     assert r.cohorts.index.name == "made_at"
 
 
+@pytest.mark.fast
 def test_multi_day_means_and_hit_rate():
     d1 = _day("2024-03-01", [5, 4, 3, 2, 1], [0.10, 0.0, 0.0, 0.0, 0.0])    # gross .10, bench .02
     d2 = _day("2024-03-04", [5, 4, 3, 2, 1], [-0.05, 0.0, 0.0, 0.0, 0.0])   # gross -.05, bench -.01
@@ -114,6 +120,7 @@ def test_multi_day_means_and_hit_rate():
     assert r.summary["hit_rate_vs_benchmark"] == 0.5  # yalniz 1. gun benchmark'i gecti
 
 
+@pytest.mark.fast
 def test_always_up_equals_benchmark():
     rng = np.random.default_rng(3)
     frames = [
@@ -133,6 +140,7 @@ def test_always_up_equals_benchmark():
     np.testing.assert_allclose(r10.cohorts["excess_net"], -0.002, atol=1e-15)
 
 
+@pytest.mark.fast
 def test_two_valued_baseline_scores_select_whole_tied_group():
     # yedi 0.6, uc 0.4; top_frac 0.2 -> k=2 ama esik 0.6, yedisi de secilir
     rets = [0.04, 0.02, 0.0, 0.01, -0.01, 0.03, 0.05, -0.05, 0.0, 0.02]
@@ -143,6 +151,7 @@ def test_two_valued_baseline_scores_select_whole_tied_group():
     assert c["gross_ret"] == pytest.approx(np.mean(rets[:7]))
 
 
+@pytest.mark.fast
 def test_cost_is_two_times_one_way_bps():
     df = _day("2024-03-01", [3, 2, 1, 0, -1], [0.05, 0.0, 0.0, 0.0, 0.0])
     for bps in (0.0, 5.0, 10.0, 25.0, 100.0):
@@ -151,6 +160,7 @@ def test_cost_is_two_times_one_way_bps():
         assert r.cohorts["net_ret"].iloc[0] == pytest.approx(0.05 - 2.0 * bps / 1e4)
 
 
+@pytest.mark.fast
 def test_benchmark_is_cost_free():
     rng = np.random.default_rng(1)
     df = pd.concat([_day(d, rng.normal(size=8), rng.normal(0, 0.02, 8)) for d in pd.bdate_range("2024-01-01", periods=6)])
@@ -162,6 +172,7 @@ def test_benchmark_is_cost_free():
     np.testing.assert_allclose(r1.cohorts["excess_net"], r0.cohorts["excess_net"] - 0.01, atol=1e-15)
 
 
+@pytest.mark.fast
 def test_nan_rows_dropped_and_counted():
     # 6 satir: T1 skoru NaN (evrenden cikar), T4 getirisi NaN (evrenden cikar) -> evren 4 hisse
     df = _day("2024-03-01", [6.0, np.nan, 4.0, 3.0, 2.0, 1.0], [0.08, 0.50, 0.0, 0.0, np.nan, -0.04])
@@ -175,6 +186,7 @@ def test_nan_rows_dropped_and_counted():
     assert c["benchmark_ret"] == pytest.approx(0.01)
 
 
+@pytest.mark.fast
 def test_small_universe_days_skipped_and_counted():
     ok = _day("2024-03-01", [5, 4, 3, 2, 1], [0.1, 0, 0, 0, 0])
     small = _day("2024-03-04", [3, 2, 1], [0.1, 0.0, 0.0])               # 3 < 5
@@ -191,6 +203,7 @@ def test_small_universe_days_skipped_and_counted():
     assert r2.summary["n_cohorts"] == 2 and r2.summary["skipped_days"] == 0
 
 
+@pytest.mark.fast
 def test_empty_and_all_skipped_input():
     empty = pd.DataFrame({"made_at": [], "ticker": [], "score": [], "tradable_ret": []})
     r = simulate_cohort_portfolio(empty)
@@ -204,6 +217,7 @@ def test_empty_and_all_skipped_input():
     assert np.isnan(max_drawdown(equity_curve(r, 5)))
 
 
+@pytest.mark.fast
 def test_row_order_and_dtypes_do_not_matter():
     rng = np.random.default_rng(7)
     df = pd.concat([_day(d, rng.normal(size=9), rng.normal(0, 0.02, 9)) for d in pd.bdate_range("2024-01-01", periods=8)])
@@ -219,6 +233,7 @@ def test_row_order_and_dtypes_do_not_matter():
 
 # ------------------------------------------------------------ girdi dogrulama / saflik
 
+@pytest.mark.fast
 def test_input_validation():
     df = _day("2024-03-01", [5, 4, 3, 2, 1], [0.1, 0, 0, 0, 0])
     with pytest.raises(ValueError, match="eksik sutun"):
@@ -249,6 +264,7 @@ def test_input_validation():
         simulate_cohort_portfolio(nat)
 
 
+@pytest.mark.fast
 def test_does_not_mutate_input_and_is_deterministic():
     rng = np.random.default_rng(11)
     df = pd.concat([_day(d, rng.normal(size=7), rng.normal(0, 0.02, 7)) for d in pd.bdate_range("2024-01-01", periods=5)])
@@ -264,6 +280,7 @@ def test_does_not_mutate_input_and_is_deterministic():
 
 # ------------------------------------------------------------ ozkaynak / drawdown
 
+@pytest.mark.fast
 def test_equity_curve_known_series():
     # H=5: adimlar 0.05/5, -0.10/5, 0.05/5 = +0.01, -0.02, +0.01
     eq = equity_curve(_result([0.05, -0.10, 0.05]), 5)
@@ -274,6 +291,7 @@ def test_equity_curve_known_series():
     assert eq5.iloc[-1] == pytest.approx(1.05)
 
 
+@pytest.mark.fast
 def test_equity_curve_kinds_and_sorting():
     res = _result([0.05, 0.0], bench_rets=[0.01, 0.02])
     res.cohorts = res.cohorts.iloc[::-1]  # ters sirali girdi
@@ -288,6 +306,7 @@ def test_equity_curve_kinds_and_sorting():
         equity_curve("x", 5)
 
 
+@pytest.mark.fast
 def test_equity_from_simulation_matches_manual():
     d = pd.bdate_range("2024-03-01", periods=3)
     df = pd.concat([
@@ -300,6 +319,7 @@ def test_equity_from_simulation_matches_manual():
     np.testing.assert_allclose(equity_curve(r, 5, kind="benchmark").to_numpy(), [1.004, 1.000, 1.002])
 
 
+@pytest.mark.fast
 def test_max_drawdown_known_series():
     # zirve 1.2 -> dip 0.9: %25; sonra 1.5 -> 1.2: %20
     assert max_drawdown([1.0, 1.2, 0.9, 1.5, 1.2]) == pytest.approx(0.25)
@@ -314,6 +334,7 @@ def test_max_drawdown_known_series():
             max_drawdown(bad)
 
 
+@pytest.mark.fast
 def test_relative_drawdown():
     idx = pd.date_range("2024-01-01", periods=4)
     model = pd.Series([1.0, 1.1, 1.1, 1.1], index=idx)
@@ -330,6 +351,7 @@ def test_relative_drawdown():
     assert np.isnan(relative_drawdown(pd.Series([], dtype=float), pd.Series([], dtype=float)))
 
 
+@pytest.mark.fast
 def test_relative_drawdown_validation():
     idx = pd.date_range("2024-01-01", periods=3)
     with pytest.raises(ValueError, match="uzunluk"):
@@ -340,6 +362,7 @@ def test_relative_drawdown_validation():
         relative_drawdown([1.0, 0.0, 1.0], [1.0, 1.0, 1.0])
 
 
+@pytest.mark.fast
 def test_cost_sensitivity_reexported_from_portfolio():
     from bist_tahmin.evaluate import costs, portfolio
 

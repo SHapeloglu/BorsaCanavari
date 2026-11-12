@@ -25,6 +25,7 @@ def frame():
     )
 
 
+@pytest.mark.fast
 def test_check_locked_raises_for_holdout_dates():
     g = HoldoutGuard(pd.Timestamp(HS))
     g.check()  # bos
@@ -37,6 +38,7 @@ def test_check_locked_raises_for_holdout_dates():
     assert issubclass(HoldoutLocked, RuntimeError)
 
 
+@pytest.mark.fast
 def test_check_accepts_arrays_and_rejects_nat():
     g = HoldoutGuard(pd.Timestamp(HS))
     g.check(pd.DatetimeIndex(["2026-01-01", "2026-04-30"]))
@@ -46,22 +48,26 @@ def test_check_accepts_arrays_and_rejects_nat():
         g.check(pd.NaT)
 
 
+@pytest.mark.fast
 def test_clip_end():
     assert HoldoutGuard(pd.Timestamp(HS)).clip_end() == pd.Timestamp("2026-04-30")
     assert HoldoutGuard(pd.Timestamp(HS), use_holdout=True).clip_end() is None
 
 
+@pytest.mark.fast
 def test_filter_frame_drops_holdout_rows_when_locked():
     out = HoldoutGuard(pd.Timestamp(HS)).filter_frame(frame())
     assert list(out["v"]) == [0, 1, 2]  # date >= holdout_start dusurulur, etiket bitisine bakilmaz
 
 
+@pytest.mark.fast
 def test_filter_frame_drops_rows_whose_label_reaches_holdout():
     out = HoldoutGuard(pd.Timestamp(HS)).filter_frame(frame(), end_col="end_date")
     assert list(out["v"]) == [0]  # yalniz etiketi holdout'tan once biten satir kalir
     assert (out["end_date"] < pd.Timestamp(HS)).all()
 
 
+@pytest.mark.fast
 def test_filter_frame_drops_unknown_label_end_conservatively():
     df = frame()
     df.loc[0, "end_date"] = pd.NaT
@@ -69,6 +75,7 @@ def test_filter_frame_drops_unknown_label_end_conservatively():
     assert len(out) == 0
 
 
+@pytest.mark.fast
 def test_filter_frame_custom_columns_and_missing_column():
     g = HoldoutGuard(pd.Timestamp(HS))
     df = frame().rename(columns={"date": "made_at"})
@@ -79,6 +86,7 @@ def test_filter_frame_custom_columns_and_missing_column():
         g.filter_frame(frame(), end_col="yok")
 
 
+@pytest.mark.fast
 def test_filter_frame_does_not_mutate_input():
     df = frame()
     before = df.copy()
@@ -86,6 +94,7 @@ def test_filter_frame_does_not_mutate_input():
     pd.testing.assert_frame_equal(df, before)
 
 
+@pytest.mark.fast
 def test_unlocked_passes_everything_and_warns(caplog):
     with caplog.at_level(logging.WARNING, logger="bist_tahmin.backtest.guard"):
         g = HoldoutGuard(pd.Timestamp(HS), use_holdout=True)
@@ -97,6 +106,7 @@ def test_unlocked_passes_everything_and_warns(caplog):
     assert "ACIK" in g.access_note() and "2026-05-01" in g.access_note()
 
 
+@pytest.mark.fast
 def test_locked_does_not_warn_and_note_says_locked(caplog):
     with caplog.at_level(logging.WARNING, logger="bist_tahmin.backtest.guard"):
         g = HoldoutGuard(pd.Timestamp(HS))
@@ -104,6 +114,7 @@ def test_locked_does_not_warn_and_note_says_locked(caplog):
     assert "kilitli" in g.access_note()
 
 
+@pytest.mark.fast
 def test_unlocked_copy_is_independent():
     df = frame()
     out = HoldoutGuard(pd.Timestamp(HS), use_holdout=True).filter_frame(df)
@@ -111,6 +122,7 @@ def test_unlocked_copy_is_independent():
     assert df.loc[0, "v"] == 0
 
 
+@pytest.mark.fast
 def test_from_config():
     cfg = {"holdout": {"holdout_start": HS}}
     g = HoldoutGuard.from_config(cfg)
@@ -119,6 +131,7 @@ def test_from_config():
     assert HoldoutGuard.from_config(cfg2, use_holdout=True).use_holdout is True
 
 
+@pytest.mark.fast
 def test_holdout_start_normalized_to_midnight():
     g = HoldoutGuard("2026-05-01 15:00")
     assert g.holdout_start == pd.Timestamp(HS)

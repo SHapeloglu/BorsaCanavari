@@ -27,6 +27,7 @@ def family():
     return f"fam_{uuid.uuid4().hex[:10]}"
 
 
+@pytest.mark.fast
 def test_record_returns_id_and_row_has_null_result(app_conn, family):
     eid = record_experiment(app_conn, family, "ilk deneme", {"lr": 0.1, "feat": ["a", "b"]})
     assert isinstance(eid, int)
@@ -37,6 +38,7 @@ def test_record_returns_id_and_row_has_null_result(app_conn, family):
     assert row["created_at"].tzinfo is not None
 
 
+@pytest.mark.fast
 def test_created_at_explicit_and_naive_treated_as_utc(app_conn, family):
     stamp = dt.datetime(2026, 11, 8, 12, 0, tzinfo=dt.timezone.utc)
     record_experiment(app_conn, family, "a", {}, created_at=stamp)
@@ -46,6 +48,7 @@ def test_created_at_explicit_and_naive_treated_as_utc(app_conn, family):
     assert b["created_at"] == dt.datetime(2026, 11, 9, 12, 0, tzinfo=dt.timezone.utc)
 
 
+@pytest.mark.fast
 def test_json_conversion_of_non_json_types(app_conn, family):
     params = {
         "i": np.int64(3),
@@ -79,18 +82,21 @@ def test_json_conversion_of_non_json_types(app_conn, family):
     assert got["idx"] == ["2026-01-01T00:00:00"]
 
 
+@pytest.mark.fast
 def test_unserializable_value_raises_and_writes_nothing(app_conn, family):
     with pytest.raises(TypeError):
         record_experiment(app_conn, family, "x", {"obj": object()})
     assert count_trials(app_conn, family) == 0
 
 
+@pytest.mark.fast
 def test_params_must_be_mapping(app_conn, family):
     with pytest.raises(TypeError):
         record_experiment(app_conn, family, "x", [1, 2])  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("bad", ["", "   ", None])
+@pytest.mark.fast
 def test_empty_family_rejected(app_conn, bad):
     with pytest.raises(ValueError):
         record_experiment(app_conn, bad, "x", {})  # type: ignore[arg-type]
@@ -103,12 +109,14 @@ def test_empty_family_rejected(app_conn, bad):
             list_experiments(app_conn, bad)
 
 
+@pytest.mark.fast
 def test_empty_description_rejected(app_conn, family):
     with pytest.raises(ValueError):
         record_experiment(app_conn, family, "  ", {})
     assert count_trials(app_conn, family) == 0
 
 
+@pytest.mark.fast
 def test_count_trials_counts_records_even_without_result_and_per_family(app_conn, family):
     other = family + "_other"
     assert count_trials(app_conn, family) == 0
@@ -121,6 +129,7 @@ def test_count_trials_counts_records_even_without_result_and_per_family(app_conn
     assert count_trials(app_conn, other) == 1
 
 
+@pytest.mark.fast
 def test_trials_cannot_be_deleted_by_app_role(app_conn, family):
     record_experiment(app_conn, family, "1", {})
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -128,6 +137,7 @@ def test_trials_cannot_be_deleted_by_app_role(app_conn, family):
     assert count_trials(app_conn, family) == 1
 
 
+@pytest.mark.fast
 def test_adjusted_alpha_known_n(app_conn, family):
     assert adjusted_alpha(app_conn, family) == 0.05  # 0 deneme -> max(1, 0)
     record_experiment(app_conn, family, "1", {})
@@ -141,6 +151,7 @@ def test_adjusted_alpha_known_n(app_conn, family):
         adjusted_alpha(app_conn, family, alpha=1.5)
 
 
+@pytest.mark.fast
 def test_update_result_only_once(app_conn, family):
     eid = record_experiment(app_conn, family, "1", {"a": 1})
     update_result(app_conn, eid, {"brier_diff": np.float64(-0.004), "n_days": np.int64(80)})
@@ -153,6 +164,7 @@ def test_update_result_only_once(app_conn, family):
     assert row["params_json"] == {"a": 1}
 
 
+@pytest.mark.fast
 def test_update_result_unknown_id_and_bad_result(app_conn, family):
     with pytest.raises(ValueError, match="yok"):
         update_result(app_conn, 2**40, {"a": 1})
@@ -162,6 +174,7 @@ def test_update_result_unknown_id_and_bad_result(app_conn, family):
     update_result(app_conn, eid, {"ok": True})  # basarisiz deneme yuvayi tuketmedi
 
 
+@pytest.mark.fast
 def test_app_role_cannot_change_params_or_family(app_conn, family):
     eid = record_experiment(app_conn, family, "1", {"a": 1})
     for col, val in [("params_json", "{}"), ("family", "baska"), ("description", "x")]:
@@ -169,6 +182,7 @@ def test_app_role_cannot_change_params_or_family(app_conn, family):
             app_conn.execute(f"UPDATE experiments SET {col} = %s WHERE id = %s", (val, eid))
 
 
+@pytest.mark.fast
 def test_list_experiments_order_and_filter(app_conn, family):
     ids = [record_experiment(app_conn, family, f"d{i}", {"i": i}) for i in range(3)]
     record_experiment(app_conn, family + "_x", "baska", {})
@@ -181,6 +195,7 @@ def test_list_experiments_order_and_filter(app_conn, family):
     assert list_experiments(app_conn, family + "_yok") == []
 
 
+@pytest.mark.fast
 def test_concurrent_records_all_counted(bist_db, family):
     admin, name = bist_db
     info = with_overrides(admin, dbname=name, user=APP_ROLE, password="test-app-password")
@@ -210,6 +225,7 @@ def test_concurrent_records_all_counted(bist_db, family):
         assert count_trials(conn, family) == n_threads * per_thread
 
 
+@pytest.mark.fast
 def test_works_on_non_autocommit_connection_and_commits(bist_db, family):
     admin, name = bist_db
     info = with_overrides(admin, dbname=name, user=APP_ROLE, password="test-app-password")

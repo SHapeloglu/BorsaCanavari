@@ -210,6 +210,7 @@ def test_tracked_job_dry_run_records_nothing(db):
     (dt.datetime(2026, 11, 8, 12, 0, tzinfo=dt.timezone(dt.timedelta(hours=3))), dt.date(2026, 11, 6)),   # Pazar
     (dt.datetime(2026, 10, 30, 12, 0, tzinfo=dt.timezone(dt.timedelta(hours=3))), dt.date(2026, 10, 28)),  # 29 Ekim tatil -> Carsamba'ya
 ])
+@pytest.mark.fast
 def test_expected_last_bar_date(now, expected):
     assert expected_last_bar_date(now) == expected
 
@@ -236,6 +237,7 @@ class _Source:
         return pd.DataFrame({"ex_date": pd.to_datetime([]), "kind": [], "value": []})
 
 
+@pytest.mark.fast
 def test_pipeline_end_to_end_and_idempotent(db):
     conn, _ = db
     src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
@@ -258,6 +260,7 @@ def test_pipeline_stale_data_writes_no_predictions_and_exits_3(db):
     assert _count(conn) == 0
 
 
+@pytest.mark.fast
 def test_pipeline_dry_run_writes_nothing(db):
     conn, _ = db
     src = _Source(pd.bdate_range(end=LAST, periods=NDAYS))
@@ -269,6 +272,7 @@ def test_pipeline_dry_run_writes_nothing(db):
 
 # --- yazim penceresi (ileriye donuk kanit) ------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_late_write_is_refused_but_rerun_of_existing_rows_is_fine(db):
     conn, _ = db
     first = _run(conn, CFG)                                              # Cuma 19:30: zamaninda
@@ -291,6 +295,7 @@ def test_weekend_write_before_monday_open_is_allowed(db):
     assert _run(conn, CFG, created_at=sat).inserted == len(BASELINES) * len(TICKERS)
 
 
+@pytest.mark.fast
 def test_holiday_pushes_the_write_deadline():
     from bist_tahmin.calendar import next_session_open
     assert next_session_open(dt.date(2026, 10, 28)) == pd.Timestamp("2026-10-30 10:00", tz="Europe/Istanbul")   # 29 Ekim tatil

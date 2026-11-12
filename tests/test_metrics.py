@@ -22,26 +22,31 @@ from bist_tahmin.evaluate.metrics import (
 
 # --- Brier / log loss / accuracy ---
 
+@pytest.mark.fast
 def test_brier_constant_half_is_quarter():
     labels = np.array([1, 0, 1, 1, 0, 0, 1])
     assert brier(np.full(len(labels), 0.5), labels) == pytest.approx(0.25)
 
 
+@pytest.mark.fast
 def test_brier_hand_computed():
     # (0.9-1)^2=0.01, (0.2-0)^2=0.04, (0.6-1)^2=0.16, (0.7-0)^2=0.49 -> 0.7/4
     assert brier([0.9, 0.2, 0.6, 0.7], [1, 0, 1, 0]) == pytest.approx(0.175)
 
 
+@pytest.mark.fast
 def test_brier_perfect_and_worst():
     assert brier([1.0, 0.0], [1, 0]) == 0.0
     assert brier([0.0, 1.0], [1, 0]) == 1.0
 
 
+@pytest.mark.fast
 def test_log_loss_hand_computed():
     expected = -(math.log(0.8) + math.log(0.7)) / 2
     assert log_loss([0.8, 0.3], [1, 0]) == pytest.approx(expected)
 
 
+@pytest.mark.fast
 def test_log_loss_clips_extremes_and_is_finite():
     # prob 1.0 ve etiket 0: kirpilmazsa sonsuz olurdu
     val = log_loss([1.0, 0.0], [0, 1])
@@ -49,6 +54,7 @@ def test_log_loss_clips_extremes_and_is_finite():
     assert val == pytest.approx(-math.log(0.01))
 
 
+@pytest.mark.fast
 def test_log_loss_custom_clip_and_invalid_clip():
     assert log_loss([1.0], [0], clip=(0.1, 0.9)) == pytest.approx(-math.log(0.1))
     for bad in [(0.0, 0.9), (0.1, 1.0), (0.6, 0.4)]:
@@ -56,6 +62,7 @@ def test_log_loss_custom_clip_and_invalid_clip():
             log_loss([0.5], [1], clip=bad)
 
 
+@pytest.mark.fast
 def test_accuracy_threshold():
     assert accuracy([0.9, 0.4, 0.6, 0.2], [1, 0, 0, 0]) == pytest.approx(0.75)
     assert accuracy([0.9, 0.4], [1, 0], threshold=0.95) == pytest.approx(0.5)
@@ -74,11 +81,13 @@ def test_accuracy_threshold():
         ([0.5, 0.5], [1, float("nan")]),
     ],
 )
+@pytest.mark.fast
 def test_metric_input_validation(fn, prob, label):
     with pytest.raises(ValueError):
         fn(prob, label)
 
 
+@pytest.mark.fast
 def test_base_rate_brier():
     assert base_rate_brier([1, 1, 0, 0]) == pytest.approx(0.25)
     assert base_rate_brier([1, 1, 1, 0]) == pytest.approx(0.1875)
@@ -89,6 +98,7 @@ def test_base_rate_brier():
         base_rate_brier([0, 3])
 
 
+@pytest.mark.fast
 def test_base_rate_brier_matches_constant_forecast():
     y = np.array([1, 0, 1, 1, 0, 1, 1, 0, 1, 1])
     assert base_rate_brier(y) == pytest.approx(brier(np.full(len(y), y.mean()), y))
@@ -96,6 +106,7 @@ def test_base_rate_brier_matches_constant_forecast():
 
 # --- Kalibrasyon ---
 
+@pytest.mark.fast
 def test_calibration_table_basic_and_empty_bins():
     prob = [0.05, 0.05, 0.95, 0.95, 0.95, 1.0]
     label = [0, 1, 1, 1, 0, 1]
@@ -115,6 +126,7 @@ def test_calibration_table_basic_and_empty_bins():
     assert t["bin_lo"].iloc[0] == 0.0 and t["bin_hi"].iloc[-1] == 1.0
 
 
+@pytest.mark.fast
 def test_calibration_table_edges_left_closed():
     t = calibration_table([0.5], [1], bins=2)
     assert list(t["n"]) == [0, 1]
@@ -122,6 +134,7 @@ def test_calibration_table_edges_left_closed():
     assert list(t["n"]) == [1, 0]
 
 
+@pytest.mark.fast
 def test_calibration_table_validation():
     with pytest.raises(ValueError):
         calibration_table([0.5], [1], bins=0)
@@ -157,6 +170,7 @@ def test_daily_ic_perfect_inverse_and_unrelated():
     assert abs(unrelated.mean()) < 0.03
 
 
+@pytest.mark.fast
 def test_daily_ic_known_value_and_ties():
     # sira: score 1,2,3,4,5; ret sirasi 2,1,3,5,4 -> Spearman = 1 - 6*sum(d^2)/(n(n^2-1)) = 1 - 6*4/120 = 0.8
     df = pd.DataFrame({
@@ -170,6 +184,7 @@ def test_daily_ic_known_value_and_ties():
     assert math.isnan(daily_ic(df2, "date", "score", "ret").iloc[0])
 
 
+@pytest.mark.fast
 def test_daily_ic_min_names_gives_nan_and_keeps_day():
     df = _panel(n_days=3, n_names=10)
     df = df[~((df["date"] == df["date"].unique()[1]) & (df["ticker"].isin([f"T{i}" for i in range(6)])))]
@@ -180,6 +195,7 @@ def test_daily_ic_min_names_gives_nan_and_keeps_day():
     assert ic.index.is_monotonic_increasing
 
 
+@pytest.mark.fast
 def test_daily_ic_drops_nan_rows_and_validates():
     df = _panel(n_days=1, n_names=6)
     df.loc[0, "ret"] = np.nan  # 5 hisse kalir -> yeterli
@@ -191,6 +207,7 @@ def test_daily_ic_drops_nan_rows_and_validates():
         daily_ic(df, "date", "score", "ret", min_names=1)
 
 
+@pytest.mark.fast
 def test_daily_ic_matches_numpy_pearson_of_ranks():
     df = _panel(n_days=1, n_names=25, kind="noise", seed=7)
     got = daily_ic(df, "date", "score", "ret").iloc[0]
@@ -210,6 +227,7 @@ def _ar1(n, phi, seed, mean=0.05, sd=0.1):
     return mean + sd * x
 
 
+@pytest.mark.fast
 def test_default_nw_lags_is_horizon_minus_one():
     assert default_nw_lags(5) == 4
     assert default_nw_lags(1) == 0
@@ -218,11 +236,13 @@ def test_default_nw_lags_is_horizon_minus_one():
     assert ic_summary(_ar1(100, 0.0, 1), horizon_days=10)["nw_lags"] == 9
 
 
+@pytest.mark.fast
 def test_newey_west_zero_lags_equals_population_variance():
     x = np.array([0.1, 0.3, -0.2, 0.05, 0.4, 0.0])
     assert newey_west_variance_of_mean(x, 0) == pytest.approx(x.var(ddof=0) / len(x))
 
 
+@pytest.mark.fast
 def test_newey_west_hand_computed_bartlett():
     x = np.array([1.0, 2.0, 4.0, 3.0])
     d = x - x.mean()  # [-1.5,-0.5,1.5,0.5]
@@ -232,6 +252,7 @@ def test_newey_west_hand_computed_bartlett():
     assert newey_west_variance_of_mean(x, 1) == pytest.approx(expected)
 
 
+@pytest.mark.fast
 def test_nw_abs_t_smaller_than_iid_for_autocorrelated_series():
     s = _ar1(300, 0.8, seed=11)
     r = ic_summary(s, nw_lags=4)
@@ -240,12 +261,14 @@ def test_nw_abs_t_smaller_than_iid_for_autocorrelated_series():
     assert r["n_days"] == 300
 
 
+@pytest.mark.fast
 def test_nw_close_to_iid_for_white_noise():
     s = _ar1(2000, 0.0, seed=5)
     r = ic_summary(s, nw_lags=4)
     assert r["t_stat_nw"] == pytest.approx(r["t_stat_iid"], rel=0.15)
 
 
+@pytest.mark.fast
 def test_ic_summary_handles_nan_and_degenerate():
     s = pd.Series([0.1, np.nan, 0.2, 0.15, np.nan, 0.05])
     r = ic_summary(s, nw_lags=1)
@@ -261,12 +284,14 @@ def test_ic_summary_handles_nan_and_degenerate():
         ic_summary(pd.Series([0.1, 0.2]), nw_lags=-1)
 
 
+@pytest.mark.fast
 def test_ic_summary_lags_capped_by_sample_size():
     assert ic_summary(pd.Series([0.1, 0.3, 0.2]), nw_lags=10)["nw_lags"] == 2
 
 
 # --- Etkin orneklem ---
 
+@pytest.mark.fast
 def test_effective_sample_size():
     assert effective_sample_size(30, 0.0) == pytest.approx(30.0)
     assert effective_sample_size(30, 1.0) == pytest.approx(1.0)

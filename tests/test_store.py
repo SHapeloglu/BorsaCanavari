@@ -32,6 +32,7 @@ def _count(conn, table, ticker):
     return conn.execute(f"SELECT count(*) FROM {table} WHERE ticker = %s", (ticker,)).fetchone()[0]
 
 
+@pytest.mark.fast
 def test_upsert_prices_idempotent(app_conn):
     tk = _tk()
     assert store.upsert_prices(app_conn, tk, _prices(), "borsapy", T0) == 3
@@ -42,6 +43,7 @@ def test_upsert_prices_idempotent(app_conn):
     assert fetched == [(T0,)]
 
 
+@pytest.mark.fast
 def test_upsert_prices_updates_changed_rows(app_conn):
     tk = _tk()
     store.upsert_prices(app_conn, tk, _prices(), "borsapy", T0)
@@ -52,6 +54,7 @@ def test_upsert_prices_updates_changed_rows(app_conn):
     assert close == 11.5 and fa == T1
 
 
+@pytest.mark.fast
 def test_upsert_prices_nan_becomes_null_and_requires_tz(app_conn):
     tk = _tk()
     df = _prices(1)
@@ -62,6 +65,7 @@ def test_upsert_prices_nan_becomes_null_and_requires_tz(app_conn):
         store.upsert_prices(app_conn, tk, df, "borsapy", dt.datetime(2026, 11, 8))
 
 
+@pytest.mark.fast
 def test_upsert_corporate_actions_idempotent(app_conn):
     tk = _tk()
     df = pd.DataFrame({"ex_date": pd.to_datetime(["2026-05-14", "2026-06-17"]),
@@ -75,11 +79,13 @@ def test_upsert_corporate_actions_idempotent(app_conn):
                             (tk,)).fetchone() == (3.0,)
 
 
+@pytest.mark.fast
 def test_upsert_corporate_actions_empty(app_conn):
     empty = pd.DataFrame(columns=["ex_date", "kind", "value"])
     assert store.upsert_corporate_actions(app_conn, _tk(), empty, T0) == 0
 
 
+@pytest.mark.fast
 def test_upsert_trading_calendar_idempotent_and_keeps_half_day(app_conn):
     days = pd.to_datetime(["2031-03-03", "2031-03-04"])
     assert store.upsert_trading_calendar(app_conn, days) == 2
@@ -92,6 +98,7 @@ def test_upsert_trading_calendar_idempotent_and_keeps_half_day(app_conn):
     assert rows == [(dt.date(2031, 3, 3), False), (dt.date(2031, 3, 4), True)]
 
 
+@pytest.mark.fast
 def test_app_role_cannot_delete(app_conn):
     """Yetki modeli: upsert'ten baska yol yok (silme yetkisi yok)."""
     import psycopg

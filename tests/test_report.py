@@ -275,6 +275,7 @@ def test_role_filter_keeps_base_rate_reference(db):
     assert [m.model_version for m in rep_b.models] == [BASE_RATE_VERSION]
 
 
+@pytest.mark.fast
 def test_disclaimer_in_every_report(db):
     conn, _ = db
     assert build_report(conn, _cfg(), as_of=AS_OF).text.rstrip().endswith(
@@ -367,6 +368,7 @@ def test_report_does_not_write_to_database(db):
 # --- CLI ----------------------------------------------------------------------------------------------------
 
 @pytest.mark.parametrize("argv", [["baseline", "report"], ["report", "weekly"]])
+@pytest.mark.fast
 def test_cli_requires_database_url(monkeypatch, capsys, argv):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     assert cli.main(["--config", "config/default.yaml", *argv]) == 2

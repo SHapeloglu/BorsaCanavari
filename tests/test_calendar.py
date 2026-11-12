@@ -21,6 +21,7 @@ def cal() -> TradingCalendar:
     return TradingCalendar(days)
 
 
+@pytest.mark.fast
 def test_weekends_and_holidays_are_skipped(cal):
     assert cal.is_trading_day("2025-04-22")
     assert not cal.is_trading_day("2025-04-23")  # hafta ici ama XU100'de bar yok = tatil
@@ -32,11 +33,13 @@ def test_weekends_and_holidays_are_skipped(cal):
     assert cal.next_trading_day("2025-04-26") == T("2025-04-28")  # islem gunu olmayan girdi
 
 
+@pytest.mark.fast
 def test_next_prev_none_at_edges(cal):
     assert cal.next_trading_day(cal.last_day) is None
     assert cal.prev_trading_day(cal.first_day) is None
 
 
+@pytest.mark.fast
 def test_add_trading_days_known_example(cal):
     # Cuma 18 Nisan + 5: 21, 22, (23 tatil), 24, 25, 28 -> 28 Nisan
     assert cal.add_trading_days("2025-04-18", 5) == T("2025-04-28")
@@ -45,6 +48,7 @@ def test_add_trading_days_known_example(cal):
     assert cal.add_trading_days("2025-04-18", 1) == T("2025-04-21")
 
 
+@pytest.mark.fast
 def test_add_trading_days_n_zero_and_non_trading_input(cal):
     assert cal.add_trading_days("2025-04-18", 0) == T("2025-04-18")
     with pytest.raises(ValueError):
@@ -56,6 +60,7 @@ def test_add_trading_days_n_zero_and_non_trading_input(cal):
         cal.add_trading_days("2025-04-18", -1)
 
 
+@pytest.mark.fast
 def test_add_trading_days_none_beyond_calendar(cal):
     assert cal.add_trading_days(cal.last_day, 1) is None
     assert cal.add_trading_days("2025-05-28", 5) is None
@@ -63,6 +68,7 @@ def test_add_trading_days_none_beyond_calendar(cal):
     assert cal.add_trading_days("2025-07-01", 1) is None  # takvim disi tarih
 
 
+@pytest.mark.fast
 def test_trading_days_between(cal):
     assert cal.trading_days_between("2025-04-18", "2025-04-28") == 5
     assert cal.trading_days_between("2025-04-28", "2025-04-18") == -5
@@ -77,6 +83,7 @@ def test_trading_days_between(cal):
     assert cal.trading_days_between("2025-04-18", "2025-07-01") is None
 
 
+@pytest.mark.fast
 def test_horizon_end(cal):
     assert cal.horizon_end("2025-04-18", 5) == T("2025-04-28")
     assert cal.horizon_end(T("2025-04-28"), 5) == T("2025-05-06")
@@ -84,6 +91,7 @@ def test_horizon_end(cal):
     assert cal.horizon_end("2025-04-18", 5) == cal.add_trading_days("2025-04-18", 5)
 
 
+@pytest.mark.fast
 def test_horizon_end_none_when_calendar_ends(cal):
     assert cal.horizon_end("2025-05-30", 5) is None
     assert cal.horizon_end("2025-05-26", 5) is None  # 27, 28, 29, 30 = 4 gun var, 5. yok
@@ -91,6 +99,7 @@ def test_horizon_end_none_when_calendar_ends(cal):
     assert cal.horizon_end("2025-06-10", 5) is None  # takvimin sonundan sonraki made_at: bilinemez
 
 
+@pytest.mark.fast
 def test_horizon_end_requires_trading_day_and_positive_horizon(cal):
     with pytest.raises(ValueError):
         cal.horizon_end("2025-04-19", 5)  # cumartesi
@@ -100,6 +109,7 @@ def test_horizon_end_requires_trading_day_and_positive_horizon(cal):
         cal.horizon_end("2025-04-18", 0)
 
 
+@pytest.mark.fast
 def test_constructor_normalizes_sorts_dedups_and_rejects_bad_input():
     c = TradingCalendar(["2025-01-03 09:00", "2025-01-02", "2025-01-03"])
     assert list(c.days) == [T("2025-01-02"), T("2025-01-03")]
@@ -112,6 +122,7 @@ def test_constructor_normalizes_sorts_dedups_and_rejects_bad_input():
         c.is_trading_day(T("2025-01-02", tz="Europe/Istanbul"))
 
 
+@pytest.mark.fast
 def test_calendar_from_borsapy_style_index():
     """borsapy 09:00+03:00 damgasi tz-naive normalize edilince takvime verilebilir."""
     raw = pd.DatetimeIndex(["2025-01-02 09:00", "2025-01-03 09:00"]).tz_localize("Europe/Istanbul")
@@ -121,6 +132,7 @@ def test_calendar_from_borsapy_style_index():
 
 # --- resmi tatil capraz kontrolu ---
 
+@pytest.mark.fast
 def test_cross_check_flags_bar_on_holiday_and_missing_regular_day():
     days = list(pd.bdate_range("2024-10-21", "2024-11-08"))
     days.remove(T("2024-10-29"))  # Cumhuriyet Bayrami: dogru sekilde barsiz
@@ -132,18 +144,21 @@ def test_cross_check_flags_bar_on_holiday_and_missing_regular_day():
     assert absent == [T("2024-11-04")]
 
 
+@pytest.mark.fast
 def test_cross_check_clean_calendar_has_no_suspects():
     days = [d for d in pd.bdate_range("2024-10-21", "2024-11-08") if d != T("2024-10-29")]
     assert cross_check(days) == ([], [])
     assert cross_check([]) == ([], [])
 
 
+@pytest.mark.fast
 def test_cross_check_does_not_flag_before_first_or_after_last_bar():
     days = [d for d in pd.bdate_range("2024-10-30", "2024-11-08")]
     _, absent = cross_check(days)
     assert absent == []  # 29 Ekim tatil zaten; ilk bardan onceki gunler sayilmaz
 
 
+@pytest.mark.fast
 def test_half_day_candidates_known_arife_days():
     days = [d for d in pd.bdate_range("2024-04-01", "2024-04-30")
             if d not in (T("2024-04-10"), T("2024-04-11"), T("2024-04-12"), T("2024-04-23"))]

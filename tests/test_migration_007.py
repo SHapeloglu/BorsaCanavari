@@ -59,6 +59,7 @@ def _roles(conn):
 
 # --- migration ve tek champion indexi -----------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_007_is_listed_after_006():
     names = [n for n, _ in list_migrations()]
     assert "007_champion_guard.sql" in names and names.index("007_champion_guard.sql") > names.index(

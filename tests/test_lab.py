@@ -136,6 +136,7 @@ def noise_data():
 
 # ---------------------------------------------------------------- ModelSpec / ozellik cozumleme
 
+@pytest.mark.fast
 def test_feature_groups_resolve_from_build():
     assert resolve_features("all") == FEATURE_NAMES
     assert resolve_features("stock_z") == Z_FEATURES
@@ -151,6 +152,7 @@ def test_feature_groups_resolve_from_build():
 
 
 @pytest.mark.parametrize("bad", ["fwd_ret", "fwd_rel_ret", "tradable_ret", "label_up", "label_rel_up", "end_date"])
+@pytest.mark.fast
 def test_label_derived_features_rejected(bad):
     with pytest.raises(ValueError, match="etiket"):
         ModelSpec("x", features=("ret_1", bad))
@@ -158,6 +160,7 @@ def test_label_derived_features_rejected(bad):
         resolve_features(bad)  # grup adi olarak da reddedilir
 
 
+@pytest.mark.fast
 def test_unknown_feature_or_group_rejected():
     with pytest.raises(ValueError, match="bilinmeyen"):
         ModelSpec("x", features=("ret_1", "yok_boyle_ozellik"))
@@ -169,6 +172,7 @@ def test_unknown_feature_or_group_rejected():
         ModelSpec("x", features=("ret_1", "ret_1"))
 
 
+@pytest.mark.fast
 def test_spec_validation_and_params_json():
     with pytest.raises(ValueError):
         ModelSpec("x", label="label_zzz")
@@ -219,6 +223,7 @@ def test_label_rel_up_path_runs(signal_data):
         evaluate(preds, base, label="label_up", cfg=CFG)  # yanlis label argumani
 
 
+@pytest.mark.fast
 def test_output_columns_and_clip(signal_data):
     frame, dates, folds = signal_data
     preds = run_walk_forward(frame, ModelSpec("lr", C=1000.0), folds)
@@ -231,6 +236,7 @@ def test_output_columns_and_clip(signal_data):
     assert preds["date"].isin(alld).all()
 
 
+@pytest.mark.fast
 def test_l1_penalty_runs_without_deprecation_warning(signal_data):
     frame, dates, folds = signal_data
     with warnings.catch_warnings():
@@ -242,6 +248,7 @@ def test_l1_penalty_runs_without_deprecation_warning(signal_data):
 
 # ---------------------------------------------------------------- (2) purge
 
+@pytest.mark.fast
 def test_training_rows_never_cross_first_test_day(signal_data):
     frame, dates, folds = signal_data
     preds = run_walk_forward(frame, ModelSpec("lr"), folds)
@@ -253,6 +260,7 @@ def test_training_rows_never_cross_first_test_day(signal_data):
         assert info["n_purged"] > 0  # train_end = ilk testten 1 gun once: son ufuk gunleri purge edilir
 
 
+@pytest.mark.fast
 def test_rolling_window_respects_purge_and_size(signal_data):
     frame, dates, folds = signal_data
     spec = ModelSpec("roll", window="rolling", rolling_days=30)
@@ -266,6 +274,7 @@ def test_rolling_window_respects_purge_and_size(signal_data):
     assert last_roll < last_exp
 
 
+@pytest.mark.fast
 def test_violating_fold_raises_assertion(signal_data):
     frame, dates, folds = signal_data
     # egitim sonu ilk test gunune esit: cakisma
@@ -278,6 +287,7 @@ def test_violating_fold_raises_assertion(signal_data):
         run_walk_forward(frame, ModelSpec("lr"), [bad2])
 
 
+@pytest.mark.fast
 def test_corrupt_end_date_before_date_raises(signal_data):
     frame, dates, folds = signal_data
     f2 = frame.copy()
@@ -287,6 +297,7 @@ def test_corrupt_end_date_before_date_raises(signal_data):
         run_walk_forward(f2, ModelSpec("lr"), folds[:2])
 
 
+@pytest.mark.fast
 def test_malformed_folds_raise_value_error(signal_data):
     frame, dates, folds = signal_data
     with pytest.raises(ValueError):
@@ -299,6 +310,7 @@ def test_malformed_folds_raise_value_error(signal_data):
 
 # ---------------------------------------------------------------- (3) guard
 
+@pytest.mark.fast
 def test_locked_guard_keeps_holdout_out_of_train_and_test(signal_data):
     frame, dates, _ = signal_data
     hold = dates[300]
@@ -313,6 +325,7 @@ def test_locked_guard_keeps_holdout_out_of_train_and_test(signal_data):
     assert preds.loc[preds["fold_id"] == 1, "date"].max() < dates[295]
 
 
+@pytest.mark.fast
 def test_locked_guard_rejects_fold_inside_holdout(signal_data):
     frame, dates, _ = signal_data
     guard = FakeGuard(dates[300], locked=True)
@@ -326,6 +339,7 @@ def test_locked_guard_rejects_fold_inside_holdout(signal_data):
 
 # ---------------------------------------------------------------- (4) scaler yalniz egitime fit
 
+@pytest.mark.fast
 def test_outside_train_rows_do_not_change_predictions(signal_data):
     frame, dates, _ = signal_data
     fold = Fold(0, dates[205], dates[206:216])
@@ -352,6 +366,7 @@ def test_outside_train_rows_do_not_change_predictions(signal_data):
 
 # ---------------------------------------------------------------- (5) tek sinifli fold
 
+@pytest.mark.fast
 def test_single_class_train_fold_is_skipped_and_counted(signal_data):
     frame, dates, _ = signal_data
     f2 = frame.copy()
@@ -365,6 +380,7 @@ def test_single_class_train_fold_is_skipped_and_counted(signal_data):
     assert set(preds["fold_id"]) == {1}
 
 
+@pytest.mark.fast
 def test_all_folds_skipped_returns_empty_with_columns(signal_data):
     frame, dates, _ = signal_data
     f2 = frame.copy()
@@ -380,6 +396,7 @@ def test_all_folds_skipped_returns_empty_with_columns(signal_data):
 
 # ---------------------------------------------------------------- (6) determinizm
 
+@pytest.mark.fast
 def test_deterministic(signal_data):
     frame, dates, folds = signal_data
     for pen in ("l2", "l1"):
@@ -446,6 +463,7 @@ def test_dataset_baselines_match_rules_exactly(window_days):
     assert n_val["yesterday"] > 0 and n_val["ma20"] > 0 and n_val["base_rate"] > 0
 
 
+@pytest.mark.fast
 def test_base_rate_uses_only_resolved_labels():
     """Gelecekteki etiketleri bozmak, o tarihe kadarki base_rate'i degistirmemeli."""
     frame, closes, dates = _price_world()
@@ -461,6 +479,7 @@ def test_base_rate_uses_only_resolved_labels():
     assert not np.allclose(a.loc[late, "base_rate"], b.loc[late, "base_rate"], equal_nan=True)
 
 
+@pytest.mark.fast
 def test_dataset_baseline_input_validation():
     frame, _, _ = _price_world(n_days=60, n_tickers=2)
     with pytest.raises(ValueError):
@@ -495,11 +514,13 @@ def test_more_trials_widen_ci_and_raise_resamples(signal_data):
         assert lab.result_json(r)
 
 
+@pytest.mark.fast
 def test_resample_cap_is_reported():
     plan = lab._resample_plan(2000, 1e-9)
     assert plan["resamples_used"] == lab.MAX_RESAMPLES and plan["resamples_capped"] is True
 
 
+@pytest.mark.fast
 def test_evaluate_rejects_bad_inputs(signal_data):
     frame, dates, folds = signal_data
     preds = run_walk_forward(frame, ModelSpec("lr"), folds[:2])
@@ -514,6 +535,7 @@ def test_evaluate_rejects_bad_inputs(signal_data):
         evaluate(pd.concat([preds, preds]), base, label="label_up", cfg=CFG)
 
 
+@pytest.mark.fast
 def test_insufficient_dates_warning_and_text(signal_data):
     frame, dates, folds = signal_data
     preds = run_walk_forward(frame, ModelSpec("lr"), folds[:1])  # 20 gun < 60

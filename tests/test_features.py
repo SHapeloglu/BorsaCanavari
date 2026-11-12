@@ -63,6 +63,7 @@ def linear_world(n=100):
     return hist, make_frame(xu, dates), TradingCalendar(dates), a, b, xu
 
 
+@pytest.mark.fast
 def test_hand_computed_values_linear_series():
     hist, xu, cal, a, b, xs = linear_world()
     m = cal.days[-1]
@@ -98,6 +99,7 @@ def test_hand_computed_values_linear_series():
     assert f["post_holiday"] == 0.0
 
 
+@pytest.mark.fast
 def test_rsi_wilder_textbook_values():
     # StockCharts "RSI" ornek verisi (Wilder yumusatmasi): ilk RSI 70.53, ikincisi 66.32.
     closes = [44.3389, 44.0902, 44.1497, 43.6124, 44.3278, 44.8264, 45.0955, 45.4245, 45.8433, 46.0826,
@@ -106,6 +108,7 @@ def test_rsi_wilder_textbook_values():
     assert fb._wilder_rsi(np.array(closes[:16])) == pytest.approx(66.32, abs=0.01)
 
 
+@pytest.mark.fast
 def test_rsi_matches_independent_reference_through_build():
     hist, xu, cal = make_world(("AAA", "BBB"), n=120, seed=3)
     fs = build_features(hist, xu, cal.days[-1], cal)
@@ -118,6 +121,7 @@ def test_rsi_matches_independent_reference_through_build():
     assert fs.rows["AAA"].features["rsi_14"] == pytest.approx(100 - 100 / (1 + ag / al), rel=1e-8)
 
 
+@pytest.mark.fast
 def test_rsi_flat_series_is_undefined_and_excluded():
     assert math.isnan(fb._wilder_rsi(np.full(30, 10.0)))
     hist, xu, cal = make_world(("AAA", "BBB"), n=100)
@@ -127,6 +131,7 @@ def test_rsi_flat_series_is_undefined_and_excluded():
     assert "AAA" in fs.rows
 
 
+@pytest.mark.fast
 def test_breadth_counts_stocks_above_ma20():
     n = 100
     dates = pd.bdate_range("2024-01-01", periods=n)
@@ -142,6 +147,7 @@ def test_breadth_counts_stocks_above_ma20():
 
 # --- z-skor --------------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_zscores_mean_zero_std_one_and_cover_all_stock_features():
     hist, xu, cal = make_world(n=150, seed=1)  # 10 hisse: |z| <= 9/sqrt(10) < 3, kirpma devreye girmez
     fs = build_features(hist, xu, cal.days[-1], cal)
@@ -155,6 +161,7 @@ def test_zscores_mean_zero_std_one_and_cover_all_stock_features():
         assert list(np.argsort(raw)) == list(np.argsort(z))
 
 
+@pytest.mark.fast
 def test_zscore_depends_only_on_that_days_cross_section():
     hist, xu, cal = make_world(n=400, seed=2)
     base = build_features(hist, xu, cal.days[-1], cal)
@@ -174,6 +181,7 @@ def test_zscore_depends_only_on_that_days_cross_section():
         assert got == pytest.approx(np.clip(z, -3, 3), abs=1e-8)
 
 
+@pytest.mark.fast
 def test_zscore_clip_and_constant_cross_section():
     z = fb._z_scores({"a": 0.0, **{f"x{i}": 1.0 for i in range(30)}})  # tek aykiri -> |z| > 3 -> kirpilir
     assert z["a"] == -3.0 and max(z.values()) <= 3.0
@@ -186,6 +194,7 @@ def test_zscore_clip_and_constant_cross_section():
 
 # --- sizinti / hash ------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_rows_after_made_at_do_not_change_features_or_hash():
     hist, xu, cal = make_world(n=160, seed=4)
     m = cal.days[-31]
@@ -203,6 +212,7 @@ def test_rows_after_made_at_do_not_change_features_or_hash():
     assert {t: r.feature_hash for t, r in wild.rows.items()} == {t: r.feature_hash for t, r in full.rows.items()}
 
 
+@pytest.mark.fast
 def test_hash_repeatable_and_independent_of_ticker_and_row_order():
     hist, xu, cal = make_world(n=120, seed=5)
     m = cal.days[-1]
@@ -217,6 +227,7 @@ def test_hash_repeatable_and_independent_of_ticker_and_row_order():
     assert len(set(ha.values())) == len(ha)  # farkli hisse, farkli hash
 
 
+@pytest.mark.fast
 def test_inputs_are_not_mutated():
     hist, xu, cal = make_world(n=100, seed=6)
     snap = {t: df.copy() for t, df in hist.items()}
@@ -227,6 +238,7 @@ def test_inputs_are_not_mutated():
     pd.testing.assert_frame_equal(xu, xs)
 
 
+@pytest.mark.fast
 def test_canonical_json_and_hash_format():
     row = make_feature_row("X", {"b": 1 / 3, "a": -0.0, "c": 1e-15, "d": 123456.78901234567})
     assert row.features == {"b": 0.3333333333, "a": 0.0, "c": 0.0, "d": 123456.789}
@@ -240,6 +252,7 @@ def test_canonical_json_and_hash_format():
         make_feature_row("X", {"a": float("inf")})
 
 
+@pytest.mark.fast
 def test_row_json_matches_features_and_has_all_names():
     hist, xu, cal = make_world(n=120, seed=7)
     fs = build_features(hist, xu, cal.days[-1], cal)
@@ -254,6 +267,7 @@ def test_row_json_matches_features_and_has_all_names():
 
 # --- bedelsiz ------------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_bonus_issue_gives_no_fake_jump():
     n = 100
     dates = pd.bdate_range("2024-01-01", periods=n)
@@ -280,6 +294,7 @@ def test_bonus_issue_gives_no_fake_jump():
 
 # --- haric tutma ---------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_exclusions_with_reasons():
     hist, xu, cal = make_world(("OK1", "OK2", "SHORT", "NOBAR", "NANCLOSE", "NEGCLOSE", "ZEROVOL", "GAP"),
                                n=120, seed=8)
@@ -304,6 +319,7 @@ def test_exclusions_with_reasons():
     assert list(fs.excluded) == sorted(fs.excluded)
 
 
+@pytest.mark.fast
 def test_excluded_stock_does_not_affect_others_z():
     hist, xu, cal = make_world(("A", "B", "C", "D", "BAD"), n=120, seed=9)
     m = cal.days[-1]
@@ -313,6 +329,7 @@ def test_excluded_stock_does_not_affect_others_z():
     assert {t: r.feature_hash for t, r in with_bad.rows.items()} == {t: r.feature_hash for t, r in without.rows.items()}
 
 
+@pytest.mark.fast
 def test_min_history_days_parameter():
     hist, xu, cal = make_world(("A", "B"), n=100)
     hist["B"] = hist["B"].iloc[-30:]
@@ -321,6 +338,7 @@ def test_min_history_days_parameter():
     assert fs.excluded == {"B": "nan_feature:ma50"}  # 30 bar MA50'ye yetmez; uydurulmaz
 
 
+@pytest.mark.fast
 def test_made_at_not_a_trading_day_raises():
     n = 100
     dates = pd.bdate_range("2024-01-01", periods=n).delete(60)  # bir hafta ici tatil
@@ -338,6 +356,7 @@ def test_made_at_not_a_trading_day_raises():
         build_features(hist, xu, pd.Timestamp(dates[-1], tz="Europe/Istanbul"), cal)
 
 
+@pytest.mark.fast
 def test_input_contract_violations_raise():
     hist, xu, cal = make_world(("A",), n=100)
     m = cal.days[-1]
@@ -356,6 +375,7 @@ def test_input_contract_violations_raise():
 
 # --- takvim --------------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_calendar_features_weekday_and_post_holiday():
     n = 130
     full = pd.bdate_range("2024-01-01", periods=n)

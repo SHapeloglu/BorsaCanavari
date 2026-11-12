@@ -11,6 +11,7 @@ def _insert(conn, ticker, date, o, c, c_adj):
     )
 
 
+@pytest.mark.fast
 def test_open_adj_scales_open_to_adjusted_series(app_conn):
     # BIMAS 2026-05-14 benzeri %100 bedelsiz: onceki gun ham 813 -> duzeltmeli 406.5, ex-gun 414/414
     _insert(app_conn, "OPENADJ1", "2026-05-13", 810.0, 813.0, 406.5)
@@ -23,6 +24,7 @@ def test_open_adj_scales_open_to_adjusted_series(app_conn):
     assert abs(rows["2026-05-14"] / 406.5 - 1) < 0.02
 
 
+@pytest.mark.fast
 def test_open_adj_is_null_when_close_is_zero_or_missing(app_conn):
     _insert(app_conn, "OPENADJ2", "2026-05-13", 10.0, 10.0, 10.0)
     app_conn.execute(
@@ -32,6 +34,7 @@ def test_open_adj_is_null_when_close_is_zero_or_missing(app_conn):
     assert got is None
 
 
+@pytest.mark.fast
 def test_app_cannot_write_generated_column(app_conn):
     from psycopg import errors
     with pytest.raises((errors.GeneratedAlways, errors.InsufficientPrivilege)):

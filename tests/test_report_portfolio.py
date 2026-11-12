@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from bist_tahmin.config import load_config
 from bist_tahmin.evaluate.report_portfolio import cohort_portfolio_section
@@ -20,12 +21,14 @@ def _df(scores_fn, n_days=12, n_names=10, seed=0):
     return pd.DataFrame(rows)
 
 
+@pytest.mark.fast
 def test_always_up_equals_benchmark():
     out = cohort_portfolio_section(_df(lambda i, r: 0.99), CFG)
     s = out["ozet (maliyetsiz)"]
     assert abs(s["mean_excess_gross"]) < 1e-9 and s["selected_frac_mean"] == 1.0
 
 
+@pytest.mark.fast
 def test_perfect_foresight_beats_benchmark_and_costs_reduce_net():
     out = cohort_portfolio_section(_df(lambda i, r: r), CFG)                      # skor = gercek getiri
     assert out["ozet (maliyetsiz)"]["mean_excess_gross"] > 0
@@ -34,6 +37,7 @@ def test_perfect_foresight_beats_benchmark_and_costs_reduce_net():
     assert out["dusus (alt sinir; gunluk MTM yok)"]["max_dusus_model"] >= 0
 
 
+@pytest.mark.fast
 def test_empty_and_no_resolved_returns_none_or_message():
     assert cohort_portfolio_section(pd.DataFrame(), CFG) is None
     df = _df(lambda i, r: 0.5)
@@ -41,6 +45,7 @@ def test_empty_and_no_resolved_returns_none_or_message():
     assert "hesaplanamadi" in cohort_portfolio_section(df, CFG)
 
 
+@pytest.mark.fast
 def test_missing_score_falls_back_to_prob_up():
     df = _df(lambda i, r: np.nan)
     df["prob_up"] = [0.9 if i % 2 else 0.1 for i in range(len(df))]

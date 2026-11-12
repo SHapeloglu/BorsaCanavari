@@ -28,12 +28,14 @@ def check(bars, **kw):
     return check_bars(bars, "TEST", **kw)
 
 
+@pytest.mark.fast
 def test_clean_data_has_no_issues():
     rep = check(make_bars())
     assert rep.issues == []
     assert rep.usable
 
 
+@pytest.mark.fast
 def test_duplicate_dates_error():
     b = make_bars()
     b = pd.concat([b, b.iloc[[5]]]).sort_index(kind="stable")
@@ -45,6 +47,7 @@ def test_duplicate_dates_error():
 
 @pytest.mark.parametrize("col", ["close", "close_adj"])
 @pytest.mark.parametrize("bad", [0.0, -1.0, np.nan])
+@pytest.mark.fast
 def test_bad_price_error(col, bad):
     b = make_bars()
     b.iloc[7, b.columns.get_loc(col)] = bad
@@ -56,6 +59,7 @@ def test_bad_price_error(col, bad):
     assert not rep.usable
 
 
+@pytest.mark.fast
 def test_not_monotonic_error():
     b = make_bars()
     b = b.iloc[[0, 1, 3, 2, 4] + list(range(5, len(b)))]
@@ -64,6 +68,7 @@ def test_not_monotonic_error():
     assert not rep.usable
 
 
+@pytest.mark.fast
 def test_jump_flagged_but_not_removed():
     b = make_bars()
     b.iloc[10, b.columns.get_loc("close")] *= 2  # +%100 ve ertesi gun geri doner
@@ -78,6 +83,7 @@ def test_jump_flagged_but_not_removed():
     assert len(b) == len(before)
 
 
+@pytest.mark.fast
 def test_jump_adj_flagged_separately():
     b = make_bars()
     b.iloc[10, b.columns.get_loc("close_adj")] *= 0.5
@@ -86,6 +92,7 @@ def test_jump_adj_flagged_separately():
     assert "jump_close" not in rep.codes
 
 
+@pytest.mark.fast
 def test_jump_threshold_is_parameter():
     b = make_bars()
     b.iloc[10, b.columns.get_loc("close")] *= 1.2
@@ -93,6 +100,7 @@ def test_jump_threshold_is_parameter():
     assert "jump_close" in check(b, jump_threshold=0.1).codes
 
 
+@pytest.mark.fast
 def test_zero_volume_flag():
     b = make_bars()
     b.iloc[3, b.columns.get_loc("volume")] = 0.0
@@ -102,6 +110,7 @@ def test_zero_volume_flag():
     assert rep.usable
 
 
+@pytest.mark.fast
 def test_missing_trading_days_flag_and_error():
     full = make_bars(40)
     td = full.index
@@ -119,6 +128,7 @@ def test_missing_trading_days_flag_and_error():
     assert check(b2, trading_days=td, max_missing_ratio=0.5).usable
 
 
+@pytest.mark.fast
 def test_missing_days_only_after_first_bar():
     """Gec baslayan hisse: ilk bardan onceki XU100 gunleri eksik sayilmaz."""
     full = make_bars(40)
@@ -127,12 +137,14 @@ def test_missing_days_only_after_first_bar():
     assert rep.issues == []
 
 
+@pytest.mark.fast
 def test_missing_tail_days_detected():
     full = make_bars(40)
     rep = check(full.iloc[:-3], trading_days=full.index)
     assert rep.get("missing_trading_days").dates == tuple(full.index[-3:])
 
 
+@pytest.mark.fast
 def test_bars_on_non_trading_days_flag():
     full = make_bars(40)
     rep = check(full, trading_days=full.index.delete(5))
@@ -150,6 +162,7 @@ def _with_today(today: str = "2030-01-02") -> tuple[pd.DataFrame, pd.Timestamp]:
     return pd.concat([b, row]), t
 
 
+@pytest.mark.fast
 def test_half_bar_dropped_before_cutoff():
     b, t = _with_today()
     out = drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 17:00"))
@@ -157,12 +170,14 @@ def test_half_bar_dropped_before_cutoff():
     assert t in b.index  # girdi degismedi
 
 
+@pytest.mark.fast
 def test_half_bar_kept_after_cutoff():
     b, t = _with_today()
     out = drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 19:00"))
     assert t in out.index and len(out) == len(b)
 
 
+@pytest.mark.fast
 def test_half_bar_cutoff_boundary_exact_is_accepted():
     b, t = _with_today()
     just_before = drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 18:29:59"))
@@ -171,12 +186,14 @@ def test_half_bar_cutoff_boundary_exact_is_accepted():
     assert t in exact.index
 
 
+@pytest.mark.fast
 def test_half_bar_custom_cutoff():
     b, t = _with_today()
     out = drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 18:45"), close_cutoff_time=dt.time(19, 0))
     assert t not in out.index
 
 
+@pytest.mark.fast
 def test_half_bar_timezone_aware_now_converted_to_istanbul():
     b, t = _with_today()
     # 15:00 UTC = 18:00 Istanbul (cutoff oncesi); 15:30 UTC = 18:30 Istanbul (kabul)
@@ -184,6 +201,7 @@ def test_half_bar_timezone_aware_now_converted_to_istanbul():
     assert t in drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 15:30", tz="UTC")).index
 
 
+@pytest.mark.fast
 def test_half_bar_previous_days_untouched_and_no_bar_today_noop():
     b = make_bars(30, start="2029-11-20")
     out = drop_incomplete_today_bar(b, now=pd.Timestamp("2030-01-02 10:00"))
@@ -191,6 +209,7 @@ def test_half_bar_previous_days_untouched_and_no_bar_today_noop():
     assert out is not b
 
 
+@pytest.mark.fast
 def test_check_bars_reports_half_bar_as_flag_and_ignores_it():
     b, t = _with_today()
     b.loc[t, "volume"] = 0.0  # yarim barin hacmi sifir olabilir; rapora girmemeli
@@ -202,6 +221,7 @@ def test_check_bars_reports_half_bar_as_flag_and_ignores_it():
     assert rep.usable
 
 
+@pytest.mark.fast
 def test_check_bars_accepts_today_bar_after_cutoff():
     b, t = _with_today()
     rep = check_bars(b, "TEST", now=pd.Timestamp("2030-01-02 18:30"))
@@ -209,6 +229,7 @@ def test_check_bars_accepts_today_bar_after_cutoff():
     assert rep.usable
 
 
+@pytest.mark.fast
 def test_incomplete_today_not_counted_as_missing_day():
     b, t = _with_today()
     td = b.index  # XU100 de bugun bari getirmis
@@ -221,6 +242,7 @@ def test_incomplete_today_not_counted_as_missing_day():
 
 # --- gelecek tarih ---
 
+@pytest.mark.fast
 def test_future_dates_error():
     b = make_bars(30, start="2024-01-02")
     rep = check_bars(b, "TEST", now=pd.Timestamp("2024-01-10 20:00"))
@@ -232,6 +254,7 @@ def test_future_dates_error():
 
 # --- yapisal ---
 
+@pytest.mark.fast
 def test_missing_columns_and_empty_and_bad_index():
     assert "missing_columns" in check(make_bars().drop(columns=["volume"])).codes
     assert "empty" in check(make_bars().iloc[:0]).codes
@@ -245,6 +268,7 @@ def test_missing_columns_and_empty_and_bad_index():
 
 # --- mutate etmeme ---
 
+@pytest.mark.fast
 def test_input_not_mutated_even_with_all_problems():
     b, t = _with_today()
     b = pd.concat([b, b.iloc[[3]]])  # tekrar + sira bozuk

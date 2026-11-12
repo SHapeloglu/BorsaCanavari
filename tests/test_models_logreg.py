@@ -23,6 +23,7 @@ def _data(n=800, seed=0):
 
 
 @pytest.mark.parametrize("penalty,C", [("l2", 1.0), ("l2", 0.05), ("l1", 0.5)])
+@pytest.mark.fast
 def test_matches_lab_pipeline_within_1e9(penalty, C):
     X, y = _data()
     params = logreg.fit_logreg(X, y, NAMES, C=C, penalty=penalty, label="label_up", seed=3)
@@ -38,6 +39,7 @@ def test_matches_lab_pipeline_within_1e9(penalty, C):
     assert np.max(np.abs(np.array(rows) - clipped[:25])) < 1e-12
 
 
+@pytest.mark.fast
 def test_params_keys_and_json_roundtrip():
     X, y = _data()
     params = logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="label_rel_up", extra={"a": [1, 2], "b": "x"})
@@ -52,6 +54,7 @@ def test_params_keys_and_json_roundtrip():
     assert np.array_equal(logreg.predict_frame(params, df), logreg.predict_frame(back, df))
 
 
+@pytest.mark.fast
 def test_prob_is_clipped():
     X, y = _data()
     params = logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="label_up")
@@ -61,6 +64,7 @@ def test_prob_is_clipped():
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf"), None, "x", True])
+@pytest.mark.fast
 def test_missing_or_bad_feature_raises(bad):
     X, y = _data()
     params = logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="label_up")
@@ -73,6 +77,7 @@ def test_missing_or_bad_feature_raises(bad):
         logreg.predict_prob(params, feats)
 
 
+@pytest.mark.fast
 def test_predict_frame_rejects_nan_and_missing_columns():
     X, y = _data()
     params = logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="label_up")
@@ -87,6 +92,7 @@ def test_predict_frame_rejects_nan_and_missing_columns():
     assert len(logreg.predict_frame(params, df.assign(other=1.0))) == len(df)
 
 
+@pytest.mark.fast
 def test_fit_validation():
     X, y = _data(200)
     kw = dict(C=1.0, penalty="l2", label="label_up")
@@ -110,6 +116,7 @@ def test_fit_validation():
         logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="nope")
 
 
+@pytest.mark.fast
 def test_corrupt_params_rejected():
     X, y = _data(200)
     params = logreg.fit_logreg(X, y, NAMES, C=1.0, penalty="l2", label="label_up")
@@ -122,6 +129,7 @@ def test_corrupt_params_rejected():
             logreg.predict_prob(p, row)
 
 
+@pytest.mark.fast
 def test_constant_column_is_safe():
     X, y = _data(300)
     X[:, 2] = 7.0  # sabit sutun: StandardScaler scale_=1

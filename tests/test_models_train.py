@@ -58,6 +58,7 @@ AS_OF = DAYS[200]
 TRAIN_END = DAYS[195]
 
 
+@pytest.mark.fast
 def test_training_rows_boundaries():
     f = make_frame()
     rows = train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
@@ -67,6 +68,7 @@ def test_training_rows_boundaries():
     assert rows[SPEC.label].notna().all()
 
 
+@pytest.mark.fast
 def test_training_rows_drops_nan_label_and_features():
     f = make_frame()
     f.loc[f.index[10], "ret_1_z"] = np.nan
@@ -76,12 +78,14 @@ def test_training_rows_drops_nan_label_and_features():
     assert len(rows) == 196 * len(TICKERS) - 3
 
 
+@pytest.mark.fast
 def test_purge_shorter_than_horizon_rejected():
     f = make_frame()
     with pytest.raises(ValueError, match="sizinti"):
         train.training_rows(f, SPEC, AS_OF, purge_days=3, horizon_days=H, holdout_start=HOLD)
 
 
+@pytest.mark.fast
 def test_label_known_only_rows_even_with_larger_purge():
     f = make_frame()
     rows = train.training_rows(f, SPEC, AS_OF, purge_days=8, horizon_days=H, holdout_start=HOLD)
@@ -89,12 +93,14 @@ def test_label_known_only_rows_even_with_larger_purge():
     assert (rows["end_date"] <= AS_OF).all()
 
 
+@pytest.mark.fast
 def test_missing_column_rejected():
     f = make_frame().drop(columns=["ret_5_z"])
     with pytest.raises(ValueError, match="eksik"):
         train.training_rows(f, SPEC, AS_OF, purge_days=5, horizon_days=H, holdout_start=HOLD)
 
 
+@pytest.mark.fast
 def test_changing_anything_after_as_of_does_not_change_model():
     f = make_frame()
     base, te, n = train.train_model(f, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
@@ -122,6 +128,7 @@ def test_changing_anything_after_as_of_does_not_change_model():
     assert not _params_eq(base, other)
 
 
+@pytest.mark.fast
 def test_train_model_learns_signal_and_params_are_json():
     params, _, _ = train.train_model(make_frame(), SPEC, AS_OF, horizon_days=H, purge_days=5, seed=4,
                                      holdout_start=HOLD)
@@ -135,6 +142,7 @@ def test_train_model_learns_signal_and_params_are_json():
     json.dumps(params, allow_nan=False)
 
 
+@pytest.mark.fast
 def test_too_few_rows_and_single_class_raise():
     f = make_frame()
     with pytest.raises(ValueError, match="yetersiz"):
@@ -147,6 +155,7 @@ def test_too_few_rows_and_single_class_raise():
         train.train_model(g, SPEC, AS_OF, horizon_days=H, purge_days=5, holdout_start=HOLD)
 
 
+@pytest.mark.fast
 def test_rolling_window_limits_training_days():
     f = make_frame()
     spec = lab.ModelSpec(name="r", features=FEATS, window="rolling", rolling_days=100)
@@ -154,6 +163,7 @@ def test_rolling_window_limits_training_days():
     assert rows["date"].nunique() == 100 and rows["date"].max() == TRAIN_END
 
 
+@pytest.mark.fast
 def test_rel_label_spec_uses_rel_label():
     f = make_frame()
     spec = lab.ModelSpec(name="rel", label="label_rel_up", features=FEATS)
@@ -163,6 +173,7 @@ def test_rel_label_spec_uses_rel_label():
 
 # ---------------------------------------------------------------- sinama kumesi (holdout) disarida
 
+@pytest.mark.fast
 def test_holdout_rows_excluded_by_default():
     """holdout_start = DAYS[180]: egitim satiri hem tarihi hem etiket bitisi holdout oncesinde olmali.
     date <= 174 -> end (date+5) <= 179 < 180. Tarihi 175..179 olanlarin etiketi holdout'a tasar -> disarida."""
@@ -179,6 +190,7 @@ def test_holdout_rows_excluded_by_default():
     assert params["extra"]["train_max_date"] == str(DAYS[179].date()) and params["extra"]["holdout_start"] == str(hs.date())
 
 
+@pytest.mark.fast
 def test_include_holdout_uses_full_window_and_flags_it():
     f = make_frame()
     hs = DAYS[180]
@@ -193,6 +205,7 @@ def test_include_holdout_uses_full_window_and_flags_it():
     assert params["extra"]["train_max_date"] == str(AS_OF.date()) and params["extra"]["train_max_date"] >= str(hs.date())
 
 
+@pytest.mark.fast
 def test_includes_holdout_flag_follows_real_data_not_config():
     """Bayrak cfg'ye degil gercek egitim verisine baglidir. Dahil etme istenmis ama veri sinirin altinda kaldiysa
     holdout egitime girmemistir: bayrak False. Sinir veriye girdiyse (cfg dogru ya da yanlis olsun) True."""
@@ -208,6 +221,7 @@ def test_includes_holdout_flag_follows_real_data_not_config():
     assert params["extra"]["train_includes_holdout"] is True
 
 
+@pytest.mark.fast
 def test_holdout_start_is_required_unless_explicitly_included():
     """Sinir bilinmeden disarida tutma yapilamaz: fail-closed."""
     f = make_frame()
@@ -275,6 +289,7 @@ def test_train_and_register_cannot_register_champion(db):
     assert reg.list_models(db) == []
 
 
+@pytest.mark.fast
 def test_train_and_register_requires_holdout_boundary(db):
     cfg = copy.deepcopy(CFG)
     cfg["holdout"] = {}

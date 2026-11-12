@@ -133,6 +133,7 @@ def ledger(db, book):
 
 # ---------------------------------------------------------------- kabul testleri
 
+@pytest.mark.fast
 def test_good_challenger_approved_only_when_all_conditions_hold(ledger, book):
     book.write(ledger, "good", _good(book))
     dec = pr.promote_check(ledger, CFG, "good", holdout_result=GOOD_HOLDOUT)
@@ -144,6 +145,7 @@ def test_good_challenger_approved_only_when_all_conditions_hold(ledger, book):
     assert "80" in dec.checks[0].detail and "[" in dec.checks[1].detail
 
 
+@pytest.mark.fast
 def test_deliberately_bad_challengers_are_rejected_with_reasons(ledger, book):
     book.write(ledger, "rnd", _random())
     book.write(ledger, "rev", _reversed(book))
@@ -172,6 +174,7 @@ def test_too_few_days_rejected(db, book):
     assert "30" in dec.checks[0].detail
 
 
+@pytest.mark.fast
 def test_missing_holdout_rejected(ledger, book):
     book.write(ledger, "good", _good(book))
     dec = pr.promote_check(ledger, CFG, "good")
@@ -179,6 +182,7 @@ def test_missing_holdout_rejected(ledger, book):
     assert "sinama kumesi kaniti yok" in dec.checks[2].detail
 
 
+@pytest.mark.fast
 def test_failed_or_noisy_holdout_rejected(ledger, book):
     book.write(ledger, "good", _good(book))
     worse = {**GOOD_HOLDOUT, "main": {**GOOD_HOLDOUT["main"], "model_better": False, "excludes_zero": True,
@@ -205,6 +209,7 @@ def test_holdout_skipped_when_not_required(ledger, book):
 
 # ---------------------------------------------------------------- K1: sinama kumesi butunlugu
 
+@pytest.mark.fast
 def test_holdout_including_training_is_rejected(ledger, book):
     """Holdout'u egitime katmis challenger: kanit ne kadar iyi olursa olsun kosul 3 KALDI."""
     book.write(ledger, "dirty", _good(book), include_holdout=True)
@@ -239,6 +244,7 @@ def _with_exp(**over):
     return {**GOOD_HOLDOUT, "experiment": {k: v for k, v in exp.items() if v is not None}}
 
 
+@pytest.mark.fast
 def test_holdout_result_from_wrong_window_is_rejected(ledger, book):
     """holdout_start=2030 ile uretilmis sonuc (kopya/yanlis cfg) kabul edilmez: pencere yapilandirmayla uyusmali."""
     book.write(ledger, "good", _good(book))
@@ -253,6 +259,7 @@ def test_holdout_result_from_wrong_window_is_rejected(ledger, book):
     assert failed(dec) == {pr.CHECK_HOLDOUT} and "uyusmuyor" in dec.checks[2].detail
 
 
+@pytest.mark.fast
 def test_use_holdout_false_result_is_rejected(ledger, book):
     """Kilit kapaliyken uretilmis sonuc (use_holdout=False) terfi kaniti degildir: erisim acikca yapilmamis."""
     book.write(ledger, "good", _good(book))
@@ -273,6 +280,7 @@ def test_real_window_with_use_holdout_and_matching_spec_passes_holdout(ledger, b
     assert dec.approved
 
 
+@pytest.mark.fast
 def test_training_reaching_holdout_is_rejected_by_max_date(ledger, book):
     """train_max_date >= holdout_start (end_date dahil): train_includes_holdout=False yazili olsa bile KALDI."""
     for tmax in (HOLD_START, "2026-05-20"):  # tam sinir ve sonrasi
@@ -311,6 +319,7 @@ def test_challenger_without_train_max_date_fails_closed(ledger, book):
     assert failed(dec) == {pr.CHECK_HOLDOUT} and "train_max_date yok" in dec.checks[2].detail
 
 
+@pytest.mark.fast
 def test_config_without_holdout_boundary_fails_closed(ledger, book):
     """Yapilandirmada holdout_start hic yoksa sinama penceresi dogrulanamaz: KALDI (require_holdout_pass acik)."""
     book.write(ledger, "good", _good(book))
@@ -346,6 +355,7 @@ def test_good_challenger_shadow_improvement_passes(ledger, book):
     assert dec.checks[3].ok and "iyilesme var" in dec.checks[3].detail
 
 
+@pytest.mark.fast
 def test_net_return_condition(ledger, book):
     book.write(ledger, "good", _good(book))
     cfg = copy.deepcopy(CFG)
@@ -364,6 +374,7 @@ def test_brier_improvement_threshold(ledger, book):
 
 # ---------------------------------------------------------------- champion: kosul 2 ve 5'te karar verici
 
+@pytest.mark.fast
 def test_champion_must_be_beaten_as_well_as_base_rate(ledger, book):
     """Champion C baz orana karsi GUCLU; challenger X baz orana karsi iyi ama C'den kotu -> X REDDEDILIR.
     Kosul 2 (Brier) ve/veya kosul 5 (net) KALDI; detay champion farkini gosterir."""
@@ -396,6 +407,7 @@ def test_challenger_better_than_champion_and_base_rate_is_approved(ledger, book)
     assert "champion 'C'" in dec.summary and dec.summary.startswith("ONAY")
 
 
+@pytest.mark.fast
 def test_better_than_champion_but_worse_than_base_rate_is_rejected(ledger, book):
     """Champion'dan iyi ama baz orandan kotu challenger REDDEDILIR. Champion karsilastirmasi gecer, baz oran
     karsilastirmasi kalir: kosul 2 bu yuzden KALDI."""
@@ -458,6 +470,7 @@ def test_n_trials_tightens_interval(ledger, book):
         pr.promote_check(ledger, CFG, "good", alpha=1.5)
 
 
+@pytest.mark.fast
 def test_cost_resolution():
     assert pr.resolve_cost({"costs": {}}, None)[0] == 10.0 == pr.DEFAULT_COST_BPS
     assert pr.resolve_cost({"costs": {"commission_bps": 8, "spread_bps": None}}, None)[0] == 10.0

@@ -56,6 +56,7 @@ def _dates(conn, ticker):
     return [str(r[0]) for r in conn.execute("SELECT date FROM prices WHERE ticker=%s ORDER BY date", (ticker,))]
 
 
+@pytest.mark.fast
 def test_xu100_is_fetched_before_tickers(app_conn):
     t = _tk()
     src = Source({t: _bars(WEEK)})
@@ -63,6 +64,7 @@ def test_xu100_is_fetched_before_tickers(app_conn):
     assert src.order[0] == "XU100" and src.order[1:] == [t]
 
 
+@pytest.mark.fast
 def test_ticker_with_excessive_missing_days_is_excluded_not_written(app_conn):
     good, bad = _tk(), _tk()
     src = Source({good: _bars(WEEK), bad: _bars(WEEK[:2])})  # kotu: bes beklenen gunden uc tanesi eksik
@@ -74,6 +76,7 @@ def test_ticker_with_excessive_missing_days_is_excluded_not_written(app_conn):
     assert res.ok  # dislanma hata degil; is surer
 
 
+@pytest.mark.fast
 def test_flags_are_recorded_but_data_is_written_unmodified(app_conn):
     t = _tk()
     df = _bars(WEEK)
@@ -87,6 +90,7 @@ def test_flags_are_recorded_but_data_is_written_unmodified(app_conn):
     assert any("BAYRAK" in line for line in res.summary_lines())
 
 
+@pytest.mark.fast
 def test_incomplete_today_bar_is_not_written_before_cutoff(app_conn):
     # Oturum boyu paylasilan DB'de baska testlerin takvim satirlariyla karismasin diye ayri bir hafta kullanilir.
     week = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06"]  # 6 Mart Cuma
@@ -101,12 +105,14 @@ def test_incomplete_today_bar_is_not_written_before_cutoff(app_conn):
     assert res.ok and t not in res.excluded                  # yarim bar "eksik gun" sayilmaz
 
 
+@pytest.mark.fast
 def test_today_bar_is_kept_after_cutoff(app_conn):
     t = _tk()
     fetch_all(Source({t: _bars(WEEK)}), app_conn, [t], "2026-11-01", now=AFTER_CLOSE, pause=0)
     assert _dates(app_conn, t)[-1] == "2026-11-06"
 
 
+@pytest.mark.fast
 def test_drop_incomplete_today_can_be_disabled(app_conn):
     t = _tk()
     fetch_all(Source({t: _bars(WEEK)}), app_conn, [t], "2026-11-01", now=BEFORE_CLOSE, pause=0,
@@ -114,6 +120,7 @@ def test_drop_incomplete_today_can_be_disabled(app_conn):
     assert _dates(app_conn, t)[-1] == "2026-11-06"
 
 
+@pytest.mark.fast
 def test_dry_run_with_quality_writes_nothing(app_conn):
     t = _tk()
     res = fetch_all(Source({t: _bars(WEEK)}), app_conn, [t], "2026-11-01", now=AFTER_CLOSE, pause=0, dry_run=True)

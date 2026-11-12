@@ -21,6 +21,7 @@ def _put(conn, ticker, days, base=10.0):
             " VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'test',now())", (ticker, d, c, c + 1, c - 1, c, c / 2, 100 + i))
 
 
+@pytest.mark.fast
 def test_read_prices_shape_until_and_since(app_conn):
     t = _tk()
     days = ["2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05"]
@@ -34,12 +35,14 @@ def test_read_prices_shape_until_and_since(app_conn):
     assert store.read_prices(app_conn, [t], since="2026-02-04")[t].index.min() == pd.Timestamp("2026-02-04")
 
 
+@pytest.mark.fast
 def test_read_prices_missing_ticker_absent_and_empty_input(app_conn):
     t = _tk()
     assert store.read_prices(app_conn, [t]) == {}
     assert store.read_prices(app_conn, []) == {}
 
 
+@pytest.mark.fast
 def test_read_calendar_returns_trading_calendar(app_conn):
     store.upsert_trading_calendar(app_conn, pd.DatetimeIndex(["2025-03-03", "2025-03-04", "2025-03-05"]))
     cal = store.read_calendar(app_conn)

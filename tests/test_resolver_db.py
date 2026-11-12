@@ -53,6 +53,7 @@ def _row(conn, pid):
         " FROM predictions WHERE id = %s", (pid,)).fetchone()
 
 
+@pytest.mark.fast
 def test_resolve_end_to_end_and_second_run_is_noop(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2001)
     made, end, nxt = days[1], days[6], days[2]
@@ -76,6 +77,7 @@ def test_resolve_end_to_end_and_second_run_is_noop(app_conn, new_prediction, ins
     assert _row(app_conn, p1)[1] == pytest.approx(106 / 101 - 1)       # degismedi
 
 
+@pytest.mark.fast
 def test_not_due_is_not_resolved_until_end_bar_exists(app_conn, new_prediction, insert_prediction):
     t2, days, cal = _setup(app_conn, 2002, n_bars=6)      # barlar days[5]'e kadar; END=days[6] yok
     cal = TradingCalendar(days[:8])                       # takvim END'i yalniz 1 islem gunu gecti: henuz 'stale' degil
@@ -101,6 +103,7 @@ def test_not_due_is_not_resolved_until_end_bar_exists(app_conn, new_prediction, 
     assert _row(app_conn, pid)[0] == days[6].date()
 
 
+@pytest.mark.fast
 def test_as_of_blocks_resolution_before_end_date(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2003)
     pid = _predict(app_conn, new_prediction, insert_prediction, t, days[1])
@@ -110,6 +113,7 @@ def test_as_of_blocks_resolution_before_end_date(app_conn, new_prediction, inser
     assert _row(app_conn, pid)[0] == days[6].date()
 
 
+@pytest.mark.fast
 def test_resolution_is_write_once_by_trigger(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2004)
     pid = _predict(app_conn, new_prediction, insert_prediction, t, days[1])
@@ -122,6 +126,7 @@ def test_resolution_is_write_once_by_trigger(app_conn, new_prediction, insert_pr
     assert _row(app_conn, pid) == before
 
 
+@pytest.mark.fast
 def test_dry_run_writes_nothing_but_counts(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2005)
     pid = _predict(app_conn, new_prediction, insert_prediction, t, days[1])
@@ -132,6 +137,7 @@ def test_dry_run_writes_nothing_but_counts(app_conn, new_prediction, insert_pred
     assert real.resolved == 1 and _row(app_conn, pid)[0] == days[6].date()
 
 
+@pytest.mark.fast
 def test_adjustment_mismatch_is_not_written(app_conn, new_prediction, insert_prediction):
     # %100 bedelsiz days[4]'te. Ham: 100,101,102,103,52,53,54,...; made_at (days[1]) close_adj'i ESKI olcekte
     # (101) kalmis, sonrasi yeni olcekte (26.. gibi) -> sahte -%49 gorunur. Yazilmamali.
@@ -148,6 +154,7 @@ def test_adjustment_mismatch_is_not_written(app_conn, new_prediction, insert_pre
     assert resolve_due(app_conn, cal).resolved == 0
 
 
+@pytest.mark.fast
 def test_consistent_split_resolves_with_real_return(app_conn, new_prediction, insert_prediction):
     # Ayni bedelsiz ama close_adj surekli (onceki gunler yariya indirilmis): getiri ~ gercek, sahte dusus yok
     raw = [100, 101, 102, 103, 52, 53, 54, 55, 56, 57, 58, 59]
@@ -163,6 +170,7 @@ def test_consistent_split_resolves_with_real_return(app_conn, new_prediction, in
     assert r[4] == 1
 
 
+@pytest.mark.fast
 def test_horizon_unknown_when_calendar_too_short(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2008)
     pid = _predict(app_conn, new_prediction, insert_prediction, t, days[-2])   # +5 takvim disi
@@ -171,6 +179,7 @@ def test_horizon_unknown_when_calendar_too_short(app_conn, new_prediction, inser
     assert _row(app_conn, pid)[0] is None
 
 
+@pytest.mark.fast
 def test_unexplained_jump_without_corporate_action_is_not_written(app_conn, new_prediction, insert_prediction):
     # %100 bedelsiz days[4]'te, kaynak uygulamamis (close = close_adj), corporate_actions'ta KAYIT YOK:
     # mismatch korumasi gecer ama sahte -%49 yazilmamali. Satir sonraki calistirmada yine degerlendirilir.
@@ -192,6 +201,7 @@ def test_unexplained_jump_without_corporate_action_is_not_written(app_conn, new_
     assert _row(app_conn, pid)[1] == pytest.approx(54 / 50.5 - 1)
 
 
+@pytest.mark.fast
 def test_stale_ticker_is_separated_from_not_due(app_conn, new_prediction, insert_prediction):
     # ticker barlari days[5]'te durmus; takvim days[11]'e kadar gitmis (END=days[6]'dan 5 islem gunu sonra)
     t, days, cal = _setup(app_conn, 2010, n_bars=6)
@@ -202,6 +212,7 @@ def test_stale_ticker_is_separated_from_not_due(app_conn, new_prediction, insert
     assert _row(app_conn, pid)[0] is None
 
 
+@pytest.mark.fast
 def test_not_due_details_include_sample_rows(app_conn, new_prediction, insert_prediction):
     t, days, cal = _setup(app_conn, 2012, n_bars=6)
     cal = TradingCalendar(days[:8])
@@ -220,6 +231,7 @@ def iso(admin_conninfo):
         yield conn
 
 
+@pytest.mark.fast
 def test_count_overdue_empty(iso):
     cal = TradingCalendar(pd.bdate_range("2011-01-05", periods=12))
     assert count_overdue(iso, cal) == {"overdue": 0, "oldest_made_at": None, "tickers": []}

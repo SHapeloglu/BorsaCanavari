@@ -65,6 +65,7 @@ LEAKY = [_leaky_forward_return, _leaky_full_sample_zscore, _leaky_last_row, _lea
 
 
 @pytest.mark.parametrize("fn", LEAKY, ids=lambda f: f.__name__)
+@pytest.mark.fast
 def test_detector_catches_deliberately_leaky_feature_functions(fn):
     hist, xu, cal = make_world(n=160, seed=21)
     m = at(cal, 30)
@@ -72,6 +73,7 @@ def test_detector_catches_deliberately_leaky_feature_functions(fn):
         assert_no_lookahead(fn, hist, xu, m, cal)
 
 
+@pytest.mark.fast
 def test_leaky_function_passes_build_but_is_caught():
     """build_features temiz; sizintili sarmalayici aynı girdiyle yakalanir (dedektor build'in kendisini de sinar)."""
     hist, xu, cal = make_world(n=160, seed=22)
@@ -81,12 +83,14 @@ def test_leaky_function_passes_build_but_is_caught():
         assert_no_lookahead(_leaky_forward_return, hist, xu, m, cal)
 
 
+@pytest.mark.fast
 def test_build_features_passes_detector_at_many_made_at_dates():
     hist, xu, cal = make_world(n=200, seed=23)
     for off in (1, 5, 20, 60, 100):
         assert_no_lookahead(build_features, hist, xu, at(cal, off), cal)
 
 
+@pytest.mark.fast
 def test_detector_with_gaps_and_exclusions_still_clean():
     hist, xu, cal = make_world(("A", "B", "C", "D"), n=150, seed=24)
     m = at(cal, 10)
@@ -96,6 +100,7 @@ def test_detector_with_gaps_and_exclusions_still_clean():
     assert_no_lookahead(build_features, hist, xu, m, cal)
 
 
+@pytest.mark.fast
 def test_detector_vacuous_input_raises_unless_allowed():
     hist, xu, cal = make_world(n=100, seed=25)
     m = cal.days[-1]  # gelecek satir yok
@@ -104,6 +109,7 @@ def test_detector_vacuous_input_raises_unless_allowed():
     assert_no_lookahead(build_features, hist, xu, m, cal, require_future_rows=False)
 
 
+@pytest.mark.fast
 def test_detector_reports_difference_details_and_does_not_mutate_inputs():
     hist, xu, cal = make_world(("A", "B", "C"), n=140, seed=26)
     snap = {t: df.copy() for t, df in hist.items()}
@@ -115,6 +121,7 @@ def test_detector_reports_difference_details_and_does_not_mutate_inputs():
         pd.testing.assert_frame_equal(hist[t], snap[t])
 
 
+@pytest.mark.fast
 def test_detector_catches_hash_only_difference():
     def fn(h, x, m, c):
         base = build_features(h, x, m, c)
@@ -127,6 +134,7 @@ def test_detector_catches_hash_only_difference():
         assert_no_lookahead(fn, hist, xu, at(cal, 10), cal)
 
 
+@pytest.mark.fast
 def test_future_calendar_rows_do_not_change_features():
     hist, xu, cal = make_world(n=150, seed=28)
     m = at(cal, 20)
@@ -137,6 +145,7 @@ def test_future_calendar_rows_do_not_change_features():
 
 # --- kaynak taramasi -------------------------------------------------------------------------------------------
 
+@pytest.mark.fast
 def test_build_source_has_no_centered_windows_or_negative_shifts():
     src = Path(fb.__file__).read_text(encoding="utf-8")
     assert not re.search(r"center\s*=\s*True", src)

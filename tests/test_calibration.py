@@ -45,6 +45,7 @@ def _brier_of(preds):
 
 # ---------------------------------------------------------------- spec
 
+@pytest.mark.fast
 def test_spec_validation_and_params():
     assert ModelSpec("m").calibration == "none" and ModelSpec("m").params()["calibration"] == "none"
     assert ModelSpec("m", calibration="isotonic").params()["calibration"] == "isotonic"
@@ -55,6 +56,7 @@ def test_spec_validation_and_params():
 
 # ---------------------------------------------------------------- 'none' regresyon esitligi
 
+@pytest.mark.fast
 def test_none_is_identical_to_plain_pipeline_and_default():
     frame, dates = make_frame(n_days=330, n_tickers=12, beta=0.8, seed=11)
     folds = make_folds(dates, first=150, step=30)
@@ -78,6 +80,7 @@ def test_none_is_identical_to_plain_pipeline_and_default():
 # ---------------------------------------------------------------- kalibrator yalniz egitimin son kismina fit
 
 @pytest.mark.parametrize("kind", ["isotonic", "platt"])
+@pytest.mark.fast
 def test_calibrator_fit_only_on_last_part_with_gap(kind):
     frame, dates = make_frame(n_days=300, n_tickers=15, beta=1.0, seed=5)
     spec = ModelSpec("m", features=FEATS, calibration=kind)
@@ -108,6 +111,7 @@ def test_calibrator_fit_only_on_last_part_with_gap(kind):
     np.testing.assert_allclose(fm.pipeline.predict_proba(x[:40])[:, 1], fit_only.predict_proba(x[:40])[:, 1])
 
 
+@pytest.mark.fast
 def test_test_changes_do_not_change_other_test_predictions_or_calibrator():
     frame, dates = make_frame(n_days=330, n_tickers=12, beta=1.0, seed=21)
     folds = make_folds(dates, first=200, step=40)
@@ -129,6 +133,7 @@ def test_test_changes_do_not_change_other_test_predictions_or_calibrator():
 # ---------------------------------------------------------------- gelecek bilgi sizmaz
 
 @pytest.mark.parametrize("kind", ["isotonic", "platt"])
+@pytest.mark.fast
 def test_no_future_leak_into_model_or_calibrator(kind):
     frame, dates = make_frame(n_days=340, n_tickers=12, beta=1.0, seed=33)
     folds = make_folds(dates, first=220, step=30)[:1]
@@ -158,6 +163,7 @@ def test_no_future_leak_into_model_or_calibrator(kind):
     assert keep_label.notna().any()
 
 
+@pytest.mark.fast
 def test_future_features_do_not_enter_training():
     """Test gunleri ozellikleri kalibratore girmez: test ozelliklerini cok degistirmek egitim bilgisini (info) degistirmez."""
     frame, dates = make_frame(n_days=330, n_tickers=12, beta=1.0, seed=44)
@@ -172,6 +178,7 @@ def test_future_features_do_not_enter_training():
 
 # ---------------------------------------------------------------- guard + kucuk kalibrasyon seti
 
+@pytest.mark.fast
 def test_runs_with_guard_and_small_cal_set_falls_back_to_raw():
     frame, dates = make_frame(n_days=330, n_tickers=12, beta=1.0, seed=2)
     folds = make_folds(dates, first=200, step=40, last=295)
@@ -205,6 +212,7 @@ def test_skip_is_reported_in_evaluate_and_format():
 # ---------------------------------------------------------------- Brier etkisi (tohumlu)
 
 @pytest.mark.parametrize("kind", ["isotonic", "platt"])
+@pytest.mark.fast
 def test_calibration_reduces_brier_when_model_is_overconfident(kind):
     """Sinyal gucu zamanla zayifliyor: ham model eski guclu sinyale gore asiri iddiali; yeni donem kalibrasyonu duzeltir."""
     frame, dates = regime_frame()
@@ -217,6 +225,7 @@ def test_calibration_reduces_brier_when_model_is_overconfident(kind):
 
 
 @pytest.mark.parametrize("kind", ["isotonic", "platt"])
+@pytest.mark.fast
 def test_calibration_does_not_hurt_when_already_calibrated(kind):
     """Duragan ve iyi kalibre veri: kalibrasyon Brier'i belirgin bozmaz (parcali sabit/ek parametre maliyeti kucuk)."""
     frame, dates = make_frame(n_days=420, n_tickers=20, beta=1.0, seed=9)

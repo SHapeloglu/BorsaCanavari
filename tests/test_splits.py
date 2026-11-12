@@ -23,6 +23,7 @@ def idx(folds):
     return [(pos[f.train_end], [pos[d] for d in f.test_dates]) for f in folds]
 
 
+@pytest.mark.fast
 def test_hand_computed_boundaries_and_short_last_block():
     folds = make_folds(DAYS, **kw())
     # ilk test = idx 6 (ilk 6 gun yalnizca egitimde); train_end = test_ilk - purge(2)
@@ -36,6 +37,7 @@ def test_hand_computed_boundaries_and_short_last_block():
     assert all(isinstance(f, Fold) for f in folds)
 
 
+@pytest.mark.fast
 def test_no_overlap_no_gaps_and_increasing_train_end():
     folds = make_folds(DAYS, **kw())
     all_test = [d for f in folds for d in f.test_dates]
@@ -45,6 +47,7 @@ def test_no_overlap_no_gaps_and_increasing_train_end():
     assert ends == sorted(ends) and len(set(ends)) == len(ends)
 
 
+@pytest.mark.fast
 def test_purge_label_window_never_crosses_first_test_day():
     """Egitim satiri d (d <= train_end) icin etiket bitisi d+horizon <= ilk test gunu (test_purge)."""
     for purge, horizon in [(2, 2), (3, 2), (5, 5)]:
@@ -59,6 +62,7 @@ def test_purge_label_window_never_crosses_first_test_day():
             assert_no_label_overlap(ends, f.test_dates[0])
 
 
+@pytest.mark.fast
 def test_min_train_days_first_test_after_min_train():
     folds = make_folds(DAYS, **kw(min_train_days=10))
     assert folds[0].test_dates[0] == DAYS[10]
@@ -66,11 +70,13 @@ def test_min_train_days_first_test_after_min_train():
     assert not set(DAYS[:10]) & {d for f in folds for d in f.test_dates}
 
 
+@pytest.mark.fast
 def test_not_enough_days_returns_empty():
     assert make_folds(DAYS[:6], **kw()) == []
     assert make_folds(DAYS[:0], **kw()) == []
 
 
+@pytest.mark.fast
 def test_start_end_restrict_test_range_inclusive():
     folds = make_folds(DAYS, **kw(), start=DAYS[9], end=DAYS[16])
     # blok sinirlari korunur: ilk blok 6..9 -> yalniz 9; son blok 14..17 -> 14..16
@@ -81,11 +87,13 @@ def test_start_end_restrict_test_range_inclusive():
     assert all(full[d] == f.train_end for f in folds for d in f.test_dates)
 
 
+@pytest.mark.fast
 def test_end_before_first_test_gives_empty():
     assert make_folds(DAYS, **kw(), end=DAYS[5]) == []
     assert make_folds(DAYS, **kw(), start=DAYS[19] + pd.Timedelta(days=5)) == []
 
 
+@pytest.mark.fast
 def test_training_starts_at_first_day_expanding():
     folds = make_folds(DAYS, **kw())
     sizes = [int((DAYS <= f.train_end).sum()) for f in folds]
@@ -104,11 +112,13 @@ def test_training_starts_at_first_day_expanding():
         dict(retrain_every_days=True),
     ],
 )
+@pytest.mark.fast
 def test_bad_parameters(over):
     with pytest.raises(ValueError):
         make_folds(DAYS, **kw(**over))
 
 
+@pytest.mark.fast
 def test_bad_days_and_range():
     with pytest.raises(ValueError):
         make_folds(DAYS[::-1], **kw())
@@ -120,6 +130,7 @@ def test_bad_days_and_range():
         make_folds(DAYS, **kw(), start=DAYS[10], end=DAYS[5])
 
 
+@pytest.mark.fast
 def test_assert_no_label_overlap():
     first = pd.Timestamp("2026-03-10")
     ok = pd.Series(pd.to_datetime(["2026-03-02", "2026-03-10"]))  # esitlik serbest

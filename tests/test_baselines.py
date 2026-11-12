@@ -25,6 +25,7 @@ def series(values, end="2025-03-31"):
     return pd.Series(values, index=idx, dtype=float)
 
 
+@pytest.mark.fast
 def test_model_version_is_fixed():
     assert baseline_model_version("ma20") == "baseline_ma20_v1"
     assert [baseline_model_version(n) for n in BASELINES] == [f"baseline_{n}_v1" for n in BASELINES]
@@ -34,18 +35,21 @@ def test_model_version_is_fixed():
         baseline_prob("nope", "X", series([1, 2]), "2025-03-31")
 
 
+@pytest.mark.fast
 def test_always_up_is_clip_upper_bound():
     s = series([10, 9])
     assert baseline_prob("always_up", "AAA", s, s.index[-1]) == 0.99
     assert baseline_prob("always_up", "AAA", s, s.index[-1], clip=(0.05, 0.9)) == 0.9
 
 
+@pytest.mark.fast
 def test_yesterday_up_down_and_exact_zero():
     for vals, expected in (([10, 11], 0.6), ([10, 9], 0.4), ([10, 10], 0.4)):
         s = series(vals)
         assert baseline_prob("yesterday", "AAA", s, s.index[-1]) == expected
 
 
+@pytest.mark.fast
 def test_yesterday_insufficient_or_stale_is_none():
     s = series([10])
     assert baseline_prob("yesterday", "AAA", s, s.index[-1]) is None
@@ -54,6 +58,7 @@ def test_yesterday_insufficient_or_stale_is_none():
     assert baseline_prob("yesterday", "AAA", s.iloc[0:0], "2025-03-31") is None
 
 
+@pytest.mark.fast
 def test_ma20_boundaries():
     flat = [10.0] * 19
     up = series(flat + [10.5])
@@ -69,6 +74,7 @@ def test_ma20_boundaries():
     assert baseline_prob("ma20", "A", long_, long_.index[-1]) == 0.6
 
 
+@pytest.mark.fast
 def test_base_rate_uses_param_only():
     s = series([1, 2])
     assert baseline_prob("base_rate", "A", s, s.index[-1]) is None
@@ -80,12 +86,14 @@ def test_base_rate_uses_param_only():
         baseline_prob("base_rate", "A", s, s.index[-1], base_rate=1.5)
 
 
+@pytest.mark.fast
 def test_invalid_clip_rejected():
     s = series([1, 2])
     with pytest.raises(ValueError):
         baseline_prob("always_up", "A", s, s.index[-1], clip=(0.9, 0.1))
 
 
+@pytest.mark.fast
 def test_random_deterministic_in_range_and_varies():
     s = series([1, 2])
     d = T("2025-03-31")
@@ -100,6 +108,7 @@ def test_random_deterministic_in_range_and_varies():
     assert max(vals) - min(vals) > 0.1  # gercekten yayiliyor
 
 
+@pytest.mark.fast
 def test_random_ignores_global_random_state():
     s = series([1, 2])
     np.random.seed(1)
@@ -109,6 +118,7 @@ def test_random_ignores_global_random_state():
 
 
 @pytest.mark.parametrize("name", BASELINES)
+@pytest.mark.fast
 def test_rows_after_made_at_do_not_change_result(name):
     rng = np.random.default_rng(3)
     full = series(100 + np.cumsum(rng.normal(size=60)), end="2025-06-30")
@@ -123,6 +133,7 @@ def test_rows_after_made_at_do_not_change_result(name):
     assert baseline_prob(name, "AAA", spoiled, made_at, **kwargs) == baseline_prob(name, "AAA", past, made_at, **kwargs)
 
 
+@pytest.mark.fast
 def test_baseline_inputs_are_json_and_reflect_decision():
     s = series([10.0] * 19 + [10.5])
     d = s.index[-1]
@@ -154,6 +165,7 @@ def hist(cal, ups_pattern, start_close=100.0):
     return pd.DataFrame({"close_adj": closes}, index=cal.days)
 
 
+@pytest.mark.fast
 def test_base_rate_known_synthetic(cal):
     up = hist(cal, lambda i: True)
     down = hist(cal, lambda i: False)
@@ -165,6 +177,7 @@ def test_base_rate_known_synthetic(cal):
     assert historical_base_rate({"U1": up, "U2": up, "U3": up, "D": down}, made_at, cal, 5) == 0.75
 
 
+@pytest.mark.fast
 def test_base_rate_excludes_unknown_labels_and_window(cal):
     H = 5
     made_at = cal.days[100]
@@ -189,6 +202,7 @@ def test_base_rate_excludes_unknown_labels_and_window(cal):
     assert historical_base_rate({"X": df}, made_at, cal, H, window_days=1000, min_samples=n_ok + 1) is None
 
 
+@pytest.mark.fast
 def test_base_rate_no_leak_from_future_rows(cal):
     made_at = cal.days[150]
     rng = np.random.default_rng(5)
@@ -208,6 +222,7 @@ def test_base_rate_no_leak_from_future_rows(cal):
     assert historical_base_rate({"X": spoiled2}, made_at, cal, 5) == expected
 
 
+@pytest.mark.fast
 def test_base_rate_min_samples_and_edges(cal):
     up = hist(cal, lambda i: True)
     assert historical_base_rate({"U": up}, cal.days[20], cal, 5, min_samples=30) is None  # 16 ornek
@@ -223,6 +238,7 @@ def test_base_rate_min_samples_and_edges(cal):
     assert historical_base_rate({"U": up}, cal.days[200], cal, 5, label_threshold=0.2) == 0.0
 
 
+@pytest.mark.fast
 def test_base_rate_ignores_samples_whose_label_is_unknown_at_made_at(cal):
     H = 5
     made_at = cal.days[100]

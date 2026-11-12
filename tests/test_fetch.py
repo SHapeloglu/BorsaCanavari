@@ -67,6 +67,7 @@ def _run(src, conn, tk, **kw):
     return fetch_all(src, conn, tk, "2026-11-01", now=NOW, **kw)
 
 
+@pytest.mark.fast
 def test_fetch_writes_prices_actions_and_calendar(app_conn, tickers):
     res = _run(FakeSource(), app_conn, tickers)
     assert res.ok and not res.excluded
@@ -79,6 +80,7 @@ def test_fetch_writes_prices_actions_and_calendar(app_conn, tickers):
     assert app_conn.execute("SELECT count(*) FROM prices WHERE ticker = 'XU100'").fetchone()[0] >= 4
 
 
+@pytest.mark.fast
 def test_fetch_idempotent(app_conn, tickers):
     _run(FakeSource(), app_conn, tickers)
     before = _n(app_conn, tickers)
@@ -87,6 +89,7 @@ def test_fetch_idempotent(app_conn, tickers):
     assert all(v == 0 for v in res.written.values())
 
 
+@pytest.mark.fast
 def test_dry_run_writes_nothing(app_conn, tickers):
     res = _run(FakeSource(), app_conn, tickers, dry_run=True)
     assert res.dry_run and res.ok
@@ -96,6 +99,7 @@ def test_dry_run_writes_nothing(app_conn, tickers):
     assert res.written == {t: 3 for t in tickers}  # "yazilacak" sayisi
 
 
+@pytest.mark.fast
 def test_dry_run_no_db_changes_at_all(app_conn, tickers):
     tbls = ["prices", "corporate_actions", "trading_calendar", "universe_membership"]
     before = [app_conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in tbls]
@@ -104,6 +108,7 @@ def test_dry_run_no_db_changes_at_all(app_conn, tickers):
     assert before == after
 
 
+@pytest.mark.fast
 def test_single_ticker_failure_does_not_abort(app_conn, tickers):
     bad = tickers[1]
     res = _run(FakeSource(fail=[bad]), app_conn, tickers)
@@ -113,6 +118,7 @@ def test_single_ticker_failure_does_not_abort(app_conn, tickers):
     assert res.calendar_rows == 4  # XU100 yine de islendi
 
 
+@pytest.mark.fast
 def test_transient_error_retried(app_conn, tickers):
     src = FakeSource(flaky={tickers[0]: 2})
     res = _run(src, app_conn, tickers, retries=3)
@@ -120,6 +126,7 @@ def test_transient_error_retried(app_conn, tickers):
     assert src.calls.count(tickers[0]) == 3
 
 
+@pytest.mark.fast
 def test_retries_are_bounded(app_conn, tickers):
     src = FakeSource(flaky={tickers[0]: 99})
     res = _run(src, app_conn, tickers, retries=2)
@@ -127,12 +134,14 @@ def test_retries_are_bounded(app_conn, tickers):
     assert src.calls.count(tickers[0]) == 2
 
 
+@pytest.mark.fast
 def test_pacing_sleeps_between_requests(app_conn, tickers):
     sleeps: list[float] = []
     _run(FakeSource(), app_conn, tickers, pause=0.25, sleep=sleeps.append)
     assert len(sleeps) >= len(tickers) and set(sleeps) == {0.25}
 
 
+@pytest.mark.fast
 def test_validator_rejection_not_written(app_conn, tickers):
     bad = tickers[0]
 
@@ -147,6 +156,7 @@ def test_validator_rejection_not_written(app_conn, tickers):
     assert res.ok  # dislanma hata degildir
 
 
+@pytest.mark.fast
 def test_empty_source_data_is_error(app_conn, tickers):
     class Empty(FakeSource):
         def history(self, ticker, start=None, end=None):

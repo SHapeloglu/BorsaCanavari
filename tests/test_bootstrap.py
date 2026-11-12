@@ -31,6 +31,7 @@ def _mean_ret(d):
     return float(d["ret"].mean())
 
 
+@pytest.mark.fast
 def test_bonferroni_alpha():
     assert bonferroni_alpha(0.05, 1) == 0.05
     assert bonferroni_alpha(0.05, 10) == pytest.approx(0.005)
@@ -39,6 +40,7 @@ def test_bonferroni_alpha():
             bonferroni_alpha(a, n)
 
 
+@pytest.mark.fast
 def test_block_bootstrap_never_splits_days():
     # Her gunun satir sayisi farkli: tutarlilik kontrolu daha guclu olur.
     rng = np.random.default_rng(1)
@@ -69,6 +71,7 @@ def test_block_bootstrap_never_splits_days():
         assert len(s) == sum(orig[d] * (c // orig[d]) for d, c in per_date.items())
 
 
+@pytest.mark.fast
 def test_block_bootstrap_rows_of_a_day_are_identical_copies():
     df = _panel(n_days=20, n_names=6)
     captured = []
@@ -84,6 +87,7 @@ def test_block_bootstrap_rows_of_a_day_are_identical_copies():
             np.testing.assert_array_equal(g["ret"].to_numpy(), ref[g["date"].iloc[0]])
 
 
+@pytest.mark.fast
 def test_blocks_are_consecutive_and_circular():
     # 1 satir/gun, deger = gun indeksi: bloklar ardisik (mod n) gunlerden olusmali.
     n = 23
@@ -104,6 +108,7 @@ def test_blocks_are_consecutive_and_circular():
     assert wrapped  # dairesel sarma en az bir ornekte gorulmeli
 
 
+@pytest.mark.fast
 def test_unsorted_input_and_index_do_not_matter():
     df = _panel(n_days=40, n_names=4)
     shuffled = df.sample(frac=1.0, random_state=0)
@@ -125,6 +130,7 @@ def test_reproducible_with_seed_and_differs_across_seeds():
     assert i1[:3] == i2[:3]
 
 
+@pytest.mark.fast
 def test_point_estimate_is_statistic_on_original_data():
     df = _panel(n_days=30, n_names=4)
     point, lo, hi, det = block_bootstrap_ci(df, _mean_ret, date_col="date", resamples=200)
@@ -134,6 +140,7 @@ def test_point_estimate_is_statistic_on_original_data():
     assert det["method"] == "circular_block_by_date"
 
 
+@pytest.mark.fast
 def test_block_bootstrap_ci_much_wider_than_iid_with_within_day_correlation():
     df = _panel(n_days=120, n_names=30, shock_sd=1.0, noise_sd=0.5, seed=42)
     _, blo, bhi, _ = block_bootstrap_ci(df, _mean_ret, date_col="date", block_days=10,
@@ -143,6 +150,7 @@ def test_block_bootstrap_ci_much_wider_than_iid_with_within_day_correlation():
     assert (bhi - blo) > 2.0 * (ihi - ilo)
 
 
+@pytest.mark.fast
 def test_block_bootstrap_matches_iid_without_dependence():
     # Gun soku yok, saf gurultu: iki aralik yakin olmali (blok yontemi gereksiz genisletmez).
     df = _panel(n_days=150, n_names=20, shock_sd=0.0, noise_sd=1.0, seed=5)
@@ -151,6 +159,7 @@ def test_block_bootstrap_matches_iid_without_dependence():
     assert 0.6 < (bhi - blo) / (ihi - ilo) < 1.6
 
 
+@pytest.mark.fast
 def test_block_days_larger_than_dates_is_clamped():
     df = _panel(n_days=6, n_names=3)
     _, _, _, det = block_bootstrap_ci(df, _mean_ret, date_col="date", block_days=50, resamples=20)
@@ -176,6 +185,7 @@ def test_bootstrap_with_daily_ic_statistic_uses_boot_day_groups():
     assert 0.0 < lo < point < hi
 
 
+@pytest.mark.fast
 def test_block_bootstrap_validation():
     df = _panel(n_days=10, n_names=2)
     with pytest.raises(ValueError):
@@ -196,6 +206,7 @@ def test_block_bootstrap_validation():
         block_bootstrap_ci(nan_dates, _mean_ret, date_col="date")
 
 
+@pytest.mark.fast
 def test_nan_replicates_are_dropped_and_counted():
     df = _panel(n_days=20, n_names=3)
     calls = {"n": 0}
@@ -226,6 +237,7 @@ def _loss_panel(delta, n_days=150, n_names=20, seed=0):
     return pd.DataFrame(rows)
 
 
+@pytest.mark.fast
 def test_paired_diff_excludes_zero_for_truly_better_model():
     df = _loss_panel(delta=-0.01, seed=1)
     point, lo, hi, det = paired_diff_ci(df, "loss_a", "loss_b", date_col="date",
@@ -235,6 +247,7 @@ def test_paired_diff_excludes_zero_for_truly_better_model():
     assert det["excludes_zero"] is True
 
 
+@pytest.mark.fast
 def test_paired_diff_does_not_exclude_zero_for_equal_models():
     for seed in range(5):  # sabit tohumlar: deterministik
         df = _loss_panel(delta=0.0, seed=100 + seed)
@@ -244,6 +257,7 @@ def test_paired_diff_does_not_exclude_zero_for_equal_models():
         assert det["excludes_zero"] is False
 
 
+@pytest.mark.fast
 def test_paired_diff_matches_generic_block_bootstrap():
     df = _loss_panel(delta=-0.004, n_days=60, n_names=5, seed=3)
     p1, lo1, hi1, _ = paired_diff_ci(df, "loss_a", "loss_b", date_col="date",
@@ -254,6 +268,7 @@ def test_paired_diff_matches_generic_block_bootstrap():
     assert (p1, lo1, hi1) == pytest.approx((p2, lo2, hi2))
 
 
+@pytest.mark.fast
 def test_paired_diff_is_antisymmetric():
     df = _loss_panel(delta=-0.01, n_days=80, n_names=5, seed=2)
     p, lo, hi, _ = paired_diff_ci(df, "loss_a", "loss_b", date_col="date", resamples=300, seed=1)
@@ -261,6 +276,7 @@ def test_paired_diff_is_antisymmetric():
     assert p2 == pytest.approx(-p) and lo2 == pytest.approx(-hi) and hi2 == pytest.approx(-lo)
 
 
+@pytest.mark.fast
 def test_paired_diff_wider_ci_at_higher_confidence():
     df = _loss_panel(delta=-0.005, n_days=80, n_names=5, seed=4)
     _, lo95, hi95, d95 = paired_diff_ci(df, "loss_a", "loss_b", date_col="date", resamples=1000, seed=0)
@@ -270,6 +286,7 @@ def test_paired_diff_wider_ci_at_higher_confidence():
     assert d99["tail_draws"] == pytest.approx(5.0)
 
 
+@pytest.mark.fast
 def test_paired_diff_with_real_brier_losses():
     # Gercek model: p_true bilen model, sabit 0.5'e karsi. Gun ici ortak yon sokuyla.
     rng = np.random.default_rng(8)
@@ -288,6 +305,7 @@ def test_paired_diff_with_real_brier_losses():
     assert point < 0 and det["excludes_zero"]
 
 
+@pytest.mark.fast
 def test_paired_diff_validation():
     df = _loss_panel(delta=0.0, n_days=10, n_names=2)
     with pytest.raises(ValueError):
@@ -300,6 +318,7 @@ def test_paired_diff_validation():
         paired_diff_ci(df, "loss_a", "loss_b", date_col="date", ci=0.0)
 
 
+@pytest.mark.fast
 def test_iid_bootstrap_basic():
     df = _panel(n_days=10, n_names=5)
     point, lo, hi, det = iid_bootstrap_ci(df, _mean_ret, resamples=100, seed=0)

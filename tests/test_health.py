@@ -60,6 +60,7 @@ def _levels(report):
     return {c.name: c.level for c in report.checks}
 
 
+@pytest.mark.fast
 def test_healthy_system_exits_zero(hdb):
     conn, _ = hdb
     _healthy_run(conn)
@@ -69,6 +70,7 @@ def test_healthy_system_exits_zero(hdb):
     assert all(ord(ch) < 128 for line in rep.lines() for ch in line)       # okunur ASCII Turkce
 
 
+@pytest.mark.fast
 def test_partial_problem_exit_code_is_a_warning(hdb):
     conn, _ = hdb
     _run(conn, _ist(2026, 10, 30, 19, 0, 5), "ok", {"exit_code": 1})
@@ -77,6 +79,7 @@ def test_partial_problem_exit_code_is_a_warning(hdb):
     assert any("cikis kodu 1" in line for line in rep.lines())
 
 
+@pytest.mark.fast
 def test_skipped_run_with_exit_3_is_a_warning(hdb):
     conn, _ = hdb
     _run(conn, _ist(2026, 10, 30, 19, 0, 5), "skipped", {"exit_code": 3})
@@ -85,6 +88,7 @@ def test_skipped_run_with_exit_3_is_a_warning(hdb):
     assert _levels(rep)["gunluk akis"] == WARN and _levels(rep)["son basarili akis"] == WARN
 
 
+@pytest.mark.fast
 def test_stuck_daily_run_is_critical(hdb):
     conn, _ = hdb
     _run(conn, _ist(2026, 10, 30, 19, 0, 5), "running", None, finished=False)     # 90 dk once basladi, hala running
@@ -226,6 +230,7 @@ def _run_script(tmp_path: Path, rc: int, output: str, **extra_env):
     return p, home
 
 
+@pytest.mark.fast
 def test_cron_health_success_does_not_touch_alert_file(tmp_path):
     p, home = _run_script(tmp_path, 0, "[TAMAM] veri: son bar 2026-10-30\nSONUC: SAGLIKLI (cikis kodu 0)")
     assert p.returncode == 0
@@ -233,6 +238,7 @@ def test_cron_health_success_does_not_touch_alert_file(tmp_path):
     assert "SAGLIKLI" in (home / "logs" / "health.log").read_text()
 
 
+@pytest.mark.fast
 def test_cron_health_failure_appends_one_timestamped_alert_line(tmp_path):
     out = ("[TAMAM] veri: iyi\n[KRITIK] gunluk akis: is calismadi\n[UYARI] cozum: 3 cozulmemis\n"
            "SONUC: KRITIK (cikis kodu 2)")
@@ -247,12 +253,14 @@ def test_cron_health_failure_appends_one_timestamped_alert_line(tmp_path):
     assert p2.returncode == 1                                                  # cikis kodu aynen iletilir
 
 
+@pytest.mark.fast
 def test_cron_health_only_ist_hour_guard(tmp_path):
     never = "07" if dt.datetime.now(TZ).hour != 7 else "08"
     p, home = _run_script(tmp_path, 2, "[KRITIK] x: y", ONLY_IST_HOUR=never)
     assert p.returncode == 0 and not (home / "logs" / "ALERT.txt").exists()   # saat tutmadi: hicbir sey yapmaz
 
 
+@pytest.mark.fast
 def test_cron_file_has_health_lines_and_keeps_existing_ones():
     text = (ROOT / "deploy" / "bist-tahmin.cron").read_text()
     assert "ONLY_IST_HOUR=20 /opt/bist-tahmin/deploy/cron_health.sh" in text

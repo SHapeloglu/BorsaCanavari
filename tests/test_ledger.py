@@ -47,6 +47,7 @@ def count(conn, ticker) -> int:
     return conn.execute("SELECT count(*) FROM predictions WHERE ticker = %s", (ticker,)).fetchone()[0]
 
 
+@pytest.mark.fast
 def test_write_inserts_rows(app_conn):
     rows = [make_row(), make_row(prob_up=0.0, score=None, model_role="champion", model_version="logreg_v1")]
     res = write_predictions(app_conn, rows)
@@ -62,6 +63,7 @@ def test_write_inserts_rows(app_conn):
     assert got2[0][0] == 0.0 and got2[0][1] is None and got2[0][3] == "champion"
 
 
+@pytest.mark.fast
 def test_created_at_is_used_when_given(app_conn):
     row = make_row()
     ts = dt.datetime(2026, 11, 2, 16, 0, tzinfo=dt.timezone.utc)
@@ -71,6 +73,7 @@ def test_created_at_is_used_when_given(app_conn):
         write_predictions(app_conn, [make_row()], created_at=dt.datetime(2026, 11, 2, 16, 0))
 
 
+@pytest.mark.fast
 def test_idempotent_second_run(app_conn):
     rows = [make_row(), make_row()]
     first = write_predictions(app_conn, rows)
@@ -80,6 +83,7 @@ def test_idempotent_second_run(app_conn):
     assert [count(app_conn, r.ticker) for r in rows] == [1, 1]
 
 
+@pytest.mark.fast
 def test_partial_overlap_counts(app_conn):
     a, b = make_row(), make_row()
     write_predictions(app_conn, [a])
@@ -87,6 +91,7 @@ def test_partial_overlap_counts(app_conn):
     assert (res.inserted, res.skipped_existing) == (1, 1)
 
 
+@pytest.mark.fast
 def test_duplicate_key_within_batch_inserts_first_only(app_conn):
     a = make_row(prob_up=0.3)
     dup = dataclasses.replace(a, prob_up=0.9)
@@ -98,6 +103,7 @@ def test_duplicate_key_within_batch_inserts_first_only(app_conn):
     assert write_predictions(app_conn, [b, dataclasses.replace(b, prob_up=0.1)], dry_run=True) == WriteResult(1, 1, True)
 
 
+@pytest.mark.fast
 def test_existing_prediction_fields_are_preserved(app_conn):
     original = make_row(prob_up=0.42, score=0.5, feature_hash="orig", features_json='{"a":1}')
     write_predictions(app_conn, [original])
@@ -109,6 +115,7 @@ def test_existing_prediction_fields_are_preserved(app_conn):
     assert (prob, score, role, fhash, fjson) == (0.42, 0.5, "baseline", "orig", {"a": 1})
 
 
+@pytest.mark.fast
 def test_different_model_version_same_day_is_separate_row(app_conn):
     a = make_row()
     b = dataclasses.replace(a, model_version="baseline_yesterday_v1")
@@ -116,6 +123,7 @@ def test_different_model_version_same_day_is_separate_row(app_conn):
     assert count(app_conn, a.ticker) == 2
 
 
+@pytest.mark.fast
 def test_dry_run_writes_nothing_but_counts(app_conn):
     existing, new = make_row(), make_row()
     write_predictions(app_conn, [existing])
@@ -152,6 +160,7 @@ def test_dry_run_writes_nothing_but_counts(app_conn):
         {"made_at": "2026-11-02"},
     ],
 )
+@pytest.mark.fast
 def test_validation_errors_raise_value_error(app_conn, bad):
     good = make_row()
     with pytest.raises(ValueError):
@@ -161,15 +170,18 @@ def test_validation_errors_raise_value_error(app_conn, bad):
         write_predictions(app_conn, [make_row(**bad)], dry_run=True)
 
 
+@pytest.mark.fast
 def test_boundary_probabilities_are_accepted(app_conn):
     rows = [make_row(prob_up=0.0), make_row(prob_up=1.0)]
     assert write_predictions(app_conn, rows).inserted == 2
 
 
+@pytest.mark.fast
 def test_empty_batch(app_conn):
     assert write_predictions(app_conn, []) == WriteResult(0, 0, False)
 
 
+@pytest.mark.fast
 def test_db_error_rolls_back_whole_batch(app_conn):
     # DB seviyesinde CHECK'e takilan satir (dogrulamayi gecer ama NUL karakter jsonb'de gecersiz) tum islemi geri alir
     good = make_row()
@@ -181,6 +193,7 @@ def test_db_error_rolls_back_whole_batch(app_conn):
 
 # --- baseline_feature_hash ---
 
+@pytest.mark.fast
 def test_feature_hash_stable_and_canonical():
     a = {"rule": "ma20", "close": 10.5, "ma20": 10.025000000000001, "n_bars": 20}
     b = {"n_bars": 20, "ma20": 10.025, "rule": "ma20", "close": 10.5}  # sira ve 1e-10 alti fark onemsiz
@@ -197,6 +210,7 @@ def test_feature_hash_stable_and_canonical():
     )
 
 
+@pytest.mark.fast
 def test_feature_hash_known_value_is_sha256_of_json():
     import hashlib
 
@@ -204,6 +218,7 @@ def test_feature_hash_known_value_is_sha256_of_json():
     assert h == hashlib.sha256(js.encode()).hexdigest()
 
 
+@pytest.mark.fast
 def test_feature_hash_handles_numpy_and_nesting_and_rejects_bad():
     import numpy as np
 
@@ -214,6 +229,7 @@ def test_feature_hash_handles_numpy_and_nesting_and_rejects_bad():
             baseline_feature_hash(bad)
 
 
+@pytest.mark.fast
 def test_feature_hash_roundtrips_into_ledger(app_conn):
     js, h = baseline_feature_hash({"rule": "yesterday", "ret_1d": 0.0123456789012})
     row = make_row(feature_hash=h, features_json=js)
