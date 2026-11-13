@@ -175,6 +175,23 @@ def test_breaker_cost_is_promote_default_when_costs_missing():
 
 
 @pytest.mark.fast
+def test_breaker_output_labels_cost_source():
+    """Cikti maliyet kaynagini yazar: yapilandirilmamisken DOGRULANMADI; yapilandirilmisken etiket yok. Sayilar ayni."""
+    null_cfg = {**CFG, "costs": {"commission_bps": None, "spread_bps": None}}
+    unverified = breaker.evaluate_model(_resolved_frame(bad=True), "m1", null_cfg)
+    assert "maliyet 10 bps (varsayilan tahmini, DOGRULANMADI)" in unverified.detail
+    conf_cfg = {**CFG, "costs": {"commission_bps": 8, "spread_bps": 4}}
+    configured = breaker.evaluate_model(_resolved_frame(bad=True), "m1", conf_cfg)
+    assert "maliyet 12 bps (yapilandirilmis)" in configured.detail and "DOGRULANMADI" not in configured.detail
+    # etiket hesabi degistirmez: ayni maliyet (12 bps) ile dogrudan cagri ayni goreli dusus verir
+    net, bench = breaker.model_cohort_returns(_resolved_frame(bad=True), "m1", cost_bps=12.0)
+    direct = breaker.evaluate_breaker(net, bench, int(CFG["horizon_days"]),
+                                      float(CFG["circuit_breaker"]["max_relative_drawdown"]))
+    assert configured.relative_drawdown == pytest.approx(direct.relative_drawdown)
+    assert configured.tripped == direct.tripped
+
+
+@pytest.mark.fast
 def test_evaluate_model_trips_on_bad_model_only():
     bad = breaker.evaluate_model(_resolved_frame(bad=True), "m1", CFG)
     good = breaker.evaluate_model(_resolved_frame(bad=False), "m1", CFG)

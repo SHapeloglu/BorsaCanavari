@@ -407,6 +407,8 @@ Haftalık:
 
 Devre kesici: Simüle edilmiş stratejinin eşit ağırlıklı BIST 30'a göre göreli düşüşü `circuit_breaker.max_relative_drawdown` eşiğini aşarsa ya da drift alarmı sürerse tahmin üretimi durur ve kullanıcıya rapor olarak bildirilir. Otomatik olarak yeniden başlamaz. (Mutlak düşüş kullanılmaz: piyasa düşerken model bozulmamış olabilir.)
 
+Devre kesici maliyet varsayımı: izleme kararı, terfi kapısıyla aynı tek yön maliyet kuralını kullanır (`models.promote.resolve_cost`). `costs.commission_bps` ile `costs.spread_bps` ikisi birlikte doluysa toplamları alınır; aksi halde 10 bps varsayılanı uygulanır ve bu değer DOĞRULANMADI'dır. Devre kesici her değerlendirme çıktısında kullanılan maliyeti ve kaynağını yazar: `maliyet <bps> bps (yapilandirilmis)` ya da `maliyet 10 bps (varsayilan tahmini, DOGRULANMADI)`. Devre kesici izleme amaçlıdır: maliyet doğrulanmamış olsa da hesabı 10 bps ile yapar ve fail-closed davranmaz; hesap değişmez. Terfi kapısı ise aynı durumda koşul 5'i sağlanmış saymaz ve terfi onaylamaz (Bölüm 11, karar kuralı 5). İki kararın bu farkı bilerek bırakılmıştır.
+
 ## 13. Testler (zorunlu)
 
 - `test_leakage.py`: Özellik üretimine `made_at` sonrası veri verildiğinde çıktı değişmemeli ya da hata vermeli. Bir tahminin özellikleri yalnızca geçmiş satırlardan türetildiği doğrulanır. Bilinçli olarak geleceğe bakan bir özellik (ör. ileri getiri) kullanan sahte model, sızıntı dedektörü tarafından yakalanır.
