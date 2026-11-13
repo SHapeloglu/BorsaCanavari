@@ -2,7 +2,7 @@
 
 Bu dosya projenin tek kaynak gerçeğidir (single source of truth). Bu projede çalışan her oturum, kod yazmadan önce bu dosyayı baştan sona okumalı. Bir karar değişirse önce bu dosya güncellenir, sonra kod.
 
-Sürüm: v3.1 (2026-11-11). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
+Sürüm: v3.2 (2026-11-13). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
 
 ---
 
@@ -388,7 +388,7 @@ Metrikler (her rapor döneminde):
 2. Brier'da `min_improvement_brier` kadar iyileşme; eşleştirilmiş blok bootstrap güven aralığı sıfırı dışlıyor (alfa, aynı ailedeki deneme sayısına göre Bonferroni ile sıkılaştırılmış)
 3. Dokunulmaz sınama kümesinde de aynı yönde iyileşme
 4. Canlı defterde en az `require_live_shadow_days` gün gölge çalışmış ve orada da iyileşme
-5. Maliyet sonrası benchmark'a göre fazla getiri champion'dan yüksek
+5. Maliyet sonrası benchmark'a göre fazla getiri champion'dan yüksek. Maliyet oranları doğrulanmamışsa (`costs.commission_bps` ile `costs.spread_bps` ikisi birlikte dolu değilse ve açıkça verilen bir `cost_bps` da yoksa) bu koşul sağlanmış sayılmaz (fail-closed); detayda etiket "DOGRULANMADI" yazılır ve terfi onaylanmaz.
 
 ## 12. Öğrenme döngüsü
 
@@ -501,7 +501,7 @@ Her faz, kabul kriterleri sağlanmadan kapatılmaz.
   | E2 | XU100'e göre, C=1 | +0,00013 | [−0,0006; +0,0008] (%97,5) | hayır | 0,033 (2,79) | −0,00181 |
   | E3 | mutlak, C=0,05 | +0,00002 | [−0,0037; +0,0037] (%98,3) | hayır | 0,037 (3,19) | −0,00153 |
 
-  **Yorum:** (a) Hiçbir model ana ölçütte (Brier) geçmiş-oran baseline'ını geçemedi (0,2484 vs 0,2483); terfi kuralı hiçbirini kabul etmez. (b) Hisseler arası sıralamada küçük ama istatistiksel olarak anlamlı bir sinyal görünüyor (IC ≈ 0,03–0,04, Newey-West t ≈ 3; baseline'larda ≈ 0). (c) Bu sinyal ekonomik olarak kullanılamaz: maliyetsiz brüt fazla getiri kohort başına +%0,05; tek yön 5 bps maliyet (gidiş-dönüş %0,10) bunu siler. (d) Kalibrasyon: model üst kovalarda aşırı iddialı (0,63–0,73 tahmin, 0,58–0,59 gerçekleşen) ve alt kovalarda aşırı çekingen; olası neden piyasa-düzeyi özelliklerin (mkt_*, breadth) piyasa yönünü tahmin etmeye çalışması. Bu bir HİPOTEZDİR, henüz test edilmedi.
+  **Yorum:** (a) Hiçbir model ana ölçütte (Brier) geçmiş-oran baseline'ını geçemedi (0,2484 vs 0,2483); terfi kuralı hiçbirini kabul etmez. (b) Hisseler arası sıralamada küçük ama istatistiksel olarak anlamlı bir sinyal görünüyor (IC ≈ 0,03–0,04, Newey-West t ≈ 3; baseline'larda ≈ 0). (c) Bu sinyal ekonomik olarak kullanılamaz: maliyetsiz brüt fazla getiri kohort başına +%0,05; tek yön 10 bps maliyet (gidiş-dönüş %0,20) bunu siler. (d) Kalibrasyon: model üst kovalarda aşırı iddialı (0,63–0,73 tahmin, 0,58–0,59 gerçekleşen) ve alt kovalarda aşırı çekingen; olası neden piyasa-düzeyi özelliklerin (mkt_*, breadth) piyasa yönünü tahmin etmeye çalışması. Bu bir HİPOTEZDİR, henüz test edilmedi.
   - **Uyarılar:** IC t-istatistiği deneme sayısına göre düzeltilmiş DEĞİL (yalnızca Brier aralığı Bonferroni'lidir). Bu üç deney yerel geliştirme DB'sinin `experiments` tablosundadır, canlı sunucu kaydı değildir; resmi terfi denemeleri kanonik kayıtta tutulacaktır. Coğrafi/rejim kararlılığı (yıllara göre IC) henüz bakılmadı.
   - **Sonraki aile için ön kayıt önerisi (`faz35-v2`):** (1) yalnız `stock_z` + göreli etiket; (2) E1 + olasılık kalibrasyonu (izotonik/Platt); (3) 750 günlük yuvarlanan pencere. Üç deneyden sonra durulur; sonuçlar yorumlanmadan yeni deney eklenmez.
 - Purge'lu tarihsel walk-forward, sınama kümesi kilidi, `experiments` kaydı ve çoklu deneme düzeltmesi
@@ -591,6 +591,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v3.2 (2026-11-13): Maliyet kapısı tur 2.** Bölüm 11 karar kuralı 5'e maliyet fail-closed maddesi eklendi (maliyet doğrulanmadan koşul 5 sağlanmış sayılmaz). CLI testleri maliyeti açıkça verilmiş test yapılandırmasıyla geçer; varsayılan config null kalır ve maliyetsiz durumda rc 2 sınanır. `promote.py` içindeki 10 bps atfı Bölüm 15 Faz 3.5 tablosuna düzeltildi (yalnız yorum).
 - **v3.1 (2026-11-11): Durum düzeltmesi ve doküman seti.** (1) Holdout kanıt kontrolü (`7b29738`): terfi kanıtı artık `experiment.use_holdout == True`, `holdout_start` = gerçek yapılandırma, `train_max_date < holdout_start` ve spec eşleşmesi ile doğrulanır (fail-closed); yerelde 726 test yeşil, **sunucu imajında henüz yok** (terfi öncesi zorunlu). (2) Sağlık kontrolü cron'u (`deploy/cron_health.sh`, 20:30 satırı) depoda hazır, **sunucuda eklenmedi**. (3) Proje dokümanları oluşturuldu/güncellendi: `CLAUDE.md`, `architect.md`, `task.md`, `backlog.md`, `session.md`, `README.md`. Depoda `main` dalı yok; çalışma dalı `faz-4-yasam-dongusu`.
 - **v3.0 (2026-11-11): Canlı dağıtım.** Sunucuya (Contabo) uygulananlar: (1) splits önbelleği (`cab326c`) ve Faz 4 kodunun tamamı (`HEAD`, `bist-tahmin:latest`; önceki imaj `bist-tahmin:prev-20261110`); (2) migration 006 (system_state) ve 007 (champion koruması) — idempotent, diğer veritabanlarına dokunulmadı; (3) geçmiş BIST 30 üyeliği (`universe load-history`, 58 aralık; açık üye 30; 9–11 Kasım ve geçmiş tarihlerde evren 30 hisse, daily fetch kümesi değişmedi); (4) 17 eski üyenin fiyat geçmişi 2019-06'dan (47 hisse, takvim 2019–2026, 1.859 işlem günü, hata/dışlama yok). Yeni imajla kuru `run-daily`: çıkış 0; `breaker status` kapalı; `models list` boş. Tahmin defteri: 300 satır (9 ve 10 Kasım), değişmedi. 10 Kasım 19:00 çalıştırması: 150 tahmin, çıkış 0.
   **Kalan sınır (terfi için BLOKE):** holdout kanıt dosyasının gerçek sınama penceresinde üretildiğini ve eğitimin en son tarihinin sınırın altında kaldığını doğrulayan kontrol, ayrı bir düzeltme olarak yapılıyor (yerel). Bu kontrol olmadan hiçbir challenger terfi ettirilmemeli. Otomatik haftalık yeniden eğitim hâlâ YOK (manuel CLI).

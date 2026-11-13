@@ -28,8 +28,9 @@ Kosullar (her birinin detail'i sayilari icerir; veri yetersizse ok=False ve nede
                   Champion ve baz oran icin ayri ayri, ayni kosul.
 
 Maliyet (tek yon, bps): cost_bps verilmisse o; yoksa costs.commission_bps ve costs.spread_bps ikisi de doluysa
-toplami; yoksa DEFAULT_COST_BPS = 10 bps (PROJE Bolum 11 raporundaki tek yon senaryo; DOGRULANMADI). Devre kesici
-(monitor.breaker) ayni kurali kullanir.
+toplami. Ikisi de yoksa (ya da cost_bps verilmemisse) kosul 5 FAIL-CLOSED KALDI olur ve detayda "maliyet DOGRULANMADI"
+yazar: maliyet dogrulanmadan terfi onaylanmaz. DEFAULT_COST_BPS = 10 bps (PROJE Bolum 15 Faz 3.5 tablosu, "10 bps tek yon"; DOGRULANMADI)
+yalnizca olcum/etiket icin hesaplanir. Devre kesici (monitor.breaker) resolve_cost'u kendi kapsaminda kullanmaya devam eder.
 
 Brier her zaman label_up uzerinden hesaplanir (prob_up = P(yukselis) tanimi). label_rel_up ile egitilmis bir
 modelin olasiligi bu olcutte cezalandirilir; detail'e not dusulur.
@@ -49,7 +50,7 @@ from ..evaluate.bootstrap import bonferroni_alpha, paired_diff_ci
 from ..evaluate.portfolio import simulate_cohort_portfolio, validate_cost_bps
 
 BASELINE_REFERENCE = "baseline_base_rate_v1"
-DEFAULT_COST_BPS = 10.0  # PROJE Bolum 11 'net' raporundaki tek yon senaryo; DOGRULANMADI
+DEFAULT_COST_BPS = 10.0  # PROJE Bolum 15 Faz 3.5 tablosundaki "10 bps tek yon" senaryo; DOGRULANMADI (terfi icin kabul edilmez)
 TOP_FRAC = 0.2           # PROJE.md Bolum 11: kohort portfoyu en ust %20
 TAIL_DRAWS_MIN = 10      # her uc kuyrukta en az bu kadar bootstrap replikati
 MAX_RESAMPLES = 200_000
@@ -108,14 +109,22 @@ def _load_params(conn, version: str) -> dict | None:
     return dict(row[0] or {})
 
 
+def _configured_cost(cfg: dict) -> float | None:
+    """costs.commission_bps + costs.spread_bps (ikisi de doluysa); aksi halde None."""
+    costs = cfg.get("costs") or {}
+    com, spr = costs.get("commission_bps"), costs.get("spread_bps")
+    if com is None or spr is None:
+        return None
+    return validate_cost_bps(float(com) + float(spr))
+
+
 def resolve_cost(cfg: dict, cost_bps: float | None = None) -> tuple[float, str]:
     """Tek yon maliyet (bps) ve etiketi. Breaker da bu kurali kullanir (tutarlilik)."""
     if cost_bps is not None:
         return validate_cost_bps(cost_bps), "belirtilen"
-    costs = cfg.get("costs") or {}
-    com, spr = costs.get("commission_bps"), costs.get("spread_bps")
-    if com is not None and spr is not None:
-        return validate_cost_bps(float(com) + float(spr)), "yapilandirilmis (komisyon+spread)"
+    configured = _configured_cost(cfg)
+    if configured is not None:
+        return configured, "yapilandirilmis (komisyon+spread)"
     return DEFAULT_COST_BPS, "varsayilan tahmini, DOGRULANMADI"
 
 
@@ -320,7 +329,7 @@ def _net_vs(pairs: pd.DataFrame, ref_word: str, label: str, min_impr: float, cos
 
 
 def _check_net(base: pd.DataFrame, champ: pd.DataFrame | None, champion: str | None, terfi: dict,
-               cost: float, cost_label: str) -> Check:
+               cost: float, cost_label: str, cost_verified: bool) -> Check:
     min_impr = float(terfi.get("min_improvement_net_return", 0.0) or 0.0)
     sub: dict[str, bool] = {}
     parts: list[str] = []
@@ -332,7 +341,12 @@ def _check_net(base: pd.DataFrame, champ: pd.DataFrame | None, champion: str | N
     ok_b, t_b = _net_vs(base, "referans (baz oran)", "baz oran ile (Bolum 0 ek kosul)", min_impr, cost)
     sub[SUB_BASE] = ok_b
     parts.append(t_b)
-    return Check(CHECK_NET, all(sub.values()), "; ".join(parts) + f"; maliyet {cost:g} bps tek yon ({cost_label})", sub)
+    detail = "; ".join(parts) + f"; maliyet {cost:g} bps tek yon ({cost_label})"
+    if not cost_verified:  # fail-closed: dogrulanmamis maliyetle net getiri kaniti yok, sonuc ne olursa olsun KALDI
+        detail = ("maliyet DOGRULANMADI: costs.commission_bps ve costs.spread_bps yapilandirilmamis, cost_bps da "
+                  "verilmemis; net getiri kosulu KALDI (fail-closed). Tahmini olcum: " + detail)
+        return Check(CHECK_NET, False, detail, sub)
+    return Check(CHECK_NET, all(sub.values()), detail, sub)
 
 
 # ---------------------------------------------------------------- ana giris
@@ -350,6 +364,7 @@ def promote_check(
     cost_bps: float | None = None,
 ) -> PromotionDecision:
     """5 kosulun hepsini degerlendirir; approved = hepsi ok. Veri yetersizse cokmez, ilgili kosul ok=False olur.
+    Maliyet dogrulanmamissa (costs bos ve cost_bps verilmemis) kosul 5 her zaman KALDI (fail-closed).
 
     Baz oran her zaman karsilastirilir. champion verilirse kosul 2 (Brier) ve kosul 5 (net getiri) icin champion'a
     karsi ek karsilastirma yapilir ve iki karsilastirma da gecmelidir.
@@ -366,6 +381,7 @@ def promote_check(
     min_dates = int(terfi.get("min_resolved_dates", 60))
     shadow_req = int(terfi.get("require_live_shadow_days", 60))
     cost, cost_label = resolve_cost(cfg, cost_bps)
+    cost_verified = cost_bps is not None or _configured_cost(cfg) is not None
 
     ch = _load_resolved(conn, challenger, horizon)
     matched, mism = _pair(ch, _load_resolved(conn, reference, horizon))
@@ -392,7 +408,7 @@ def promote_check(
         _check_brier(matched, champ_pairs, champion, terfi, alpha, n_trials, seed, note),
         _check_holdout(holdout_result, terfi, ch_params, _iso_day((cfg.get("holdout") or {}).get("holdout_start"))),
         _check_shadow(own_days, shadow_req, matched),
-        _check_net(matched, champ_pairs, champion, terfi, cost, cost_label),
+        _check_net(matched, champ_pairs, champion, terfi, cost, cost_label, cost_verified),
     ]
     info: list[str] = []
     if champion is not None:

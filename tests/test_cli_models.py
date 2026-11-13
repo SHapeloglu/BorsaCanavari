@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import psycopg
 import pytest
+import yaml
 from conftest import APP_PASSWORD
 
 from bist_tahmin import cli
@@ -44,8 +45,19 @@ def db(admin_conninfo, monkeypatch):
         yield conn
 
 
-def _bist(*argv: str) -> int:
-    return cli.main(["--config", CFG, *argv])
+def _bist(*argv: str, config: str = CFG) -> int:
+    return cli.main(["--config", config, *argv])
+
+
+def _costed_cfg(tmp_path: Path) -> str:
+    """config/default.yaml kopyasi; costs komisyon 8 + spread 4 bps (bu testte maliyet DOGRULANMIS sayilir).
+    Repo'daki config degistirilmez (varsayilan null kalir: fail-closed)."""
+    cfg = yaml.safe_load(Path(CFG).read_text(encoding="utf-8"))
+    cfg["costs"]["commission_bps"] = 8
+    cfg["costs"]["spread_bps"] = 4
+    p = tmp_path / "costed.yaml"
+    p.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    return str(p)
 
 
 def _register(conn, version: str, role: str = "challenger") -> None:
@@ -190,8 +202,14 @@ def test_promote_defaults_to_registry_champion_and_refuses_other_champion(db, ca
                  "--champion", "Z") == 2
     assert reg.get_model(db, "C").role == "champion" and reg.get_model(db, "X").role == "challenger"
     capsys.readouterr()
-    # bayrak verilmezse kayitli champion karsilastirilir ve kararda kullanilir
-    assert _bist("models", "promote", "--challenger", "X", "--confirm", "--holdout-result", hold) == 0
+    # maliyet DOGRULANMADI (varsayilan config: costs null): fail-closed, rc 2, terfi yok
+    assert _bist("models", "promote", "--challenger", "X", "--confirm", "--holdout-result", hold) == 2
+    assert "maliyet DOGRULANMADI" in capsys.readouterr().out
+    assert reg.get_model(db, "C").role == "champion" and reg.get_model(db, "X").role == "challenger"
+    # bayrak verilmezse kayitli champion karsilastirilir ve kararda kullanilir (maliyet dogrulanmis config ile)
+    costed = _costed_cfg(tmp_path)
+    assert _bist("models", "promote", "--challenger", "X", "--confirm", "--holdout-result", hold,
+                 config=costed) == 0
     assert "champion 'C'" in capsys.readouterr().out
     assert reg.get_model(db, "X").role == "champion" and reg.get_model(db, "C").role == "retired"
 
@@ -211,6 +229,7 @@ def test_promote_lock_blocks_concurrent_decider_and_decides_on_fresh_champion(db
     book.write(db, "X1", _good(book))
     book.write(db, "X2", _good(book))
     hold = _holdout_file(tmp_path)
+    costed = _costed_cfg(tmp_path)  # maliyet dogrulanmis config (fail-closed varsayilan burada degil)
 
     holder = psycopg.connect(db.info.dsn, autocommit=False)
     other = psycopg.connect(db.info.dsn, autocommit=True)
@@ -225,9 +244,9 @@ def test_promote_lock_blocks_concurrent_decider_and_decides_on_fresh_champion(db
         holder.close()
         other.close()
 
-    rc_a = _bist("models", "promote", "--challenger", "X1", "--confirm", "--holdout-result", hold)
+    rc_a = _bist("models", "promote", "--challenger", "X1", "--confirm", "--holdout-result", hold, config=costed)
     assert rc_a == 0
-    rc_b = _bist("models", "promote", "--challenger", "X2", "--confirm", "--holdout-result", hold)
+    rc_b = _bist("models", "promote", "--challenger", "X2", "--confirm", "--holdout-result", hold, config=costed)
     assert rc_b == 2  # X2, yeni champion X1'e karsi kazanamaz (ayni kalite)
     out = capsys.readouterr().out
     assert "champion 'X1' ile" in out  # ikinci karar, ilk terfinin ardindan kayitli champion'a karsi
