@@ -29,7 +29,7 @@ Kosullar (her birinin detail'i sayilari icerir; veri yetersizse ok=False ve nede
 
 Maliyet (tek yon, bps): cost_bps verilmisse o; yoksa costs.commission_bps ve costs.spread_bps ikisi de doluysa
 toplami. Ikisi de yoksa (ya da cost_bps verilmemisse) kosul 5 FAIL-CLOSED KALDI olur ve detayda "maliyet DOGRULANMADI"
-yazar: maliyet dogrulanmadan terfi onaylanmaz. DEFAULT_COST_BPS = 10 bps (PROJE Bolum 11 tek yon senaryo; DOGRULANMADI)
+yazar: maliyet dogrulanmadan terfi onaylanmaz. DEFAULT_COST_BPS = 10 bps (PROJE Bolum 15 Faz 3.5 tablosu, "10 bps tek yon"; DOGRULANMADI)
 yalnizca olcum/etiket icin hesaplanir. Devre kesici (monitor.breaker) resolve_cost'u kendi kapsaminda kullanmaya devam eder.
 
 Brier her zaman label_up uzerinden hesaplanir (prob_up = P(yukselis) tanimi). label_rel_up ile egitilmis bir
@@ -50,7 +50,7 @@ from ..evaluate.bootstrap import bonferroni_alpha, paired_diff_ci
 from ..evaluate.portfolio import simulate_cohort_portfolio, validate_cost_bps
 
 BASELINE_REFERENCE = "baseline_base_rate_v1"
-DEFAULT_COST_BPS = 10.0  # PROJE Bolum 11 'net' raporundaki tek yon senaryo; DOGRULANMADI (terfi icin kabul edilmez)
+DEFAULT_COST_BPS = 10.0  # PROJE Bolum 15 Faz 3.5 tablosundaki "10 bps tek yon" senaryo; DOGRULANMADI (terfi icin kabul edilmez)
 TOP_FRAC = 0.2           # PROJE.md Bolum 11: kohort portfoyu en ust %20
 TAIL_DRAWS_MIN = 10      # her uc kuyrukta en az bu kadar bootstrap replikati
 MAX_RESAMPLES = 200_000
