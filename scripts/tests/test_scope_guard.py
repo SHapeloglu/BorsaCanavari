@@ -200,6 +200,78 @@ class KancaTesti(unittest.TestCase):
         self.engel_bekle(self.kos(bash("rm -fr /tmp/x")))
         self.izin_bekle(self.kos(bash("rm -f /tmp/x")))
 
+    def test_rm_bayrak_sirasi_ve_bicim_engel(self):
+        self.engel_bekle(self.kos(bash("rm -r --force /tmp/x")))  # (a)
+        self.engel_bekle(self.kos(bash("rm --recursive -f /tmp/x")))  # (b)
+        self.engel_bekle(self.kos(bash("rm -fr /tmp/x")))  # (c)
+        self.engel_bekle(self.kos(bash("rm -Rfv /tmp/x")))
+        self.engel_bekle(self.kos(bash("rm -f -R /tmp/x")))
+        self.engel_bekle(self.kos(bash("rm --force --recursive /tmp/x")))
+        self.engel_bekle(self.kos(bash("rm --f --r /tmp/x")))  # getopt tarzi kisaltma
+        self.engel_bekle(self.kos(bash("rm -r dizin && rm -f -R y")))  # zincirde ikinci parca
+
+    def test_rm_ozyinelemesiz_veya_zorlamasiz_serbest(self):
+        self.izin_bekle(self.kos(bash("rm -r /tmp/x")))  # (d)
+        self.izin_bekle(self.kos(bash("rm -R --verbose /tmp/x")))
+        self.izin_bekle(self.kos(bash("rm --recursive /tmp/x")))
+        self.izin_bekle(self.kos(bash("rm -rv /tmp/x")))
+        self.izin_bekle(self.kos(bash("rm -v -f /tmp/x")))
+
+    # ------------------------------------------- kanca yapilandirmasi korumasi (her mod)
+
+    def test_kanca_yapilandirmasi_lider_modunda_korumali(self):
+        for yol in (
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".claude/contracts/x.json",
+            ".claude/hooks/scope_guard.py",
+        ):
+            with self.subTest(yol=yol):
+                sonuc = self.kos(yazma(yol))  # (e) Write, lider modu
+                self.engel_bekle(sonuc)
+                self.assertIn("kanca yapılandırması korumalı", sonuc.stderr)
+                self.engel_bekle(self.kos(yazma(yol, "Edit")))
+                self.engel_bekle(self.kos(yazma(yol, "MultiEdit")))
+
+    def test_kanca_yapilandirmasi_sozlesmeli_modda_korumali(self):
+        yol = self.sozlesme_dosyasi(dict(KONTRAT, write=["**"]))
+        for hedef in (
+            ".claude/contracts/x.json",  # (f) sozlesmede yazma listesi acik olsa bile
+            ".claude/settings.json",
+            ".claude/settings.local.json",
+            ".claude/hooks/x.py",
+        ):
+            with self.subTest(hedef=hedef):
+                sonuc = self.kos(yazma(hedef), sozlesme=yol)
+                self.engel_bekle(sonuc)
+                self.assertIn("kanca yapılandırması korumalı", sonuc.stderr)
+
+    def test_kanca_yapilandirmasi_yol_gezintisiyle_de_korumali(self):
+        self.engel_bekle(self.kos(yazma("src/../.claude/settings.json")))
+        self.engel_bekle(self.kos(yazma("docs/../.claude/hooks/../settings.local.json")))
+        self.engel_bekle(self.kos(yazma(str(DEPO / ".claude" / "settings.json"))))
+
+    def test_kanca_yapilandirmasi_sembolik_bag_uzerinden_korumali(self):
+        proje = os.path.join(self.gecici, "proje")
+        os.makedirs(os.path.join(proje, ".claude"))
+        dis = os.path.join(self.gecici, "dis.json")
+        with open(dis, "w", encoding="utf-8") as dosya:
+            dosya.write("{}")
+        os.symlink(dis, os.path.join(proje, ".claude", "settings.json"))
+        ortam = dict(os.environ)
+        ortam.pop("BIST_TASK_CONTRACT", None)
+        ortam["CLAUDE_PROJECT_DIR"] = proje
+        sonuc = subprocess.run(
+            [sys.executable, str(KANCA)],
+            input=json.dumps(yazma(".claude/settings.json")),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=ortam,
+            timeout=60,
+        )
+        self.engel_bekle(sonuc)
+
     def test_git_reset_hard_engel_git_log_serbest(self):
         self.engel_bekle(self.kos(bash("git reset --hard HEAD~1")))
         self.engel_bekle(self.kos(bash("git -C /x reset --hard")))

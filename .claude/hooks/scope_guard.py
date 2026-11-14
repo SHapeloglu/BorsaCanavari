@@ -12,8 +12,11 @@
 #   Bash yalnizca "commands" onekleriyle baslayan komutlara izinli.
 #   "deny" ek regex listesi Bash komutuna ve yazma yoluna uygulanir.
 #   "read" alani bilgi amaclidir; kanca tarafindan zorlanmaz.
+# Korumali kanca yapilandirmasi (her modda, sozlesme var ya da yok): .claude/settings.json,
+#   .claude/settings.local.json, .claude/contracts/** ve .claude/hooks/** yazilamaz.
 # Genel yasaklar (her modda, Bash): ssh, scp, docker, git push/pull/merge,
-#   git reset --hard, rm -rf, .env dosyasi kullanimi.
+#   git reset --hard, rm ile ozyineleme (-r/-R/--recursive) ve zorlama (-f/--force) birlikte
+#   (bayrak sirasi ve birlesik bicim fark etmez), .env dosyasi kullanimi.
 # Hata durumu (JSON, sozlesme, beklenmeyen istisna): kapali basarisizlik, exit 2.
 
 import fnmatch
@@ -32,6 +35,14 @@ YAZMA_ARACLARI = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 BASH_ARACI = "Bash"
 
 KOD_YOLLARI = ("src/", "tests/", "scripts/", "deploy/", ".claude/hooks/")
+
+# Kanca yapilandirmasi: her modda yazma yasak. Yollar proje kokune gore, posix bicimde.
+KORUMALI_DOSYALAR = frozenset({".claude/settings.json", ".claude/settings.local.json"})
+KORUMALI_KLASORLER = (".claude/contracts/", ".claude/hooks/")
+
+# rm'nin uzun seceneklerinin tam adlari; kisaltmalari (--r, --fo ...) getopt gibi kabul edilir.
+RM_UZUN_OZYINELEME = "recursive"
+RM_UZUN_ZORLAMA = "force"
 
 SSH_BENZERI = frozenset({"ssh", "scp", "sshpass"})
 DOCKER_DESENI = re.compile(r"docker(-compose)?")
@@ -112,6 +123,29 @@ def goreli_yol(yol: str, root: str) -> Optional[str]:
     if rel == os.pardir or rel.startswith(os.pardir + os.sep) or os.path.isabs(rel):
         return None
     return rel.replace(os.sep, "/")
+
+
+def _sozdizimsel_yol(yol: str, root: str) -> Optional[str]:
+    """Sembolik baglar cozulmeden, yalnizca '..' ve '.' normallestirilmis proje-goreli yol."""
+    mutlak = yol if os.path.isabs(yol) else os.path.join(root, yol)
+    rel = os.path.relpath(os.path.normpath(mutlak), root)
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep) or os.path.isabs(rel):
+        return None
+    return rel.replace(os.sep, "/")
+
+
+def _korumali_kanca_yolu(yol: str, root: str) -> Optional[str]:
+    """Yol kanca yapilandirmasiyse proje-goreli adini dondurur; degilse None.
+
+    Hem gercek yol (realpath) hem sozdizimsel yol denenir; boylece sembolik bag
+    uzerinden korumali dosyaya yazma da yakalanir.
+    """
+    for rel in (goreli_yol(yol, root), _sozdizimsel_yol(yol, root)):
+        if rel is None:
+            continue
+        if rel in KORUMALI_DOSYALAR or rel.startswith(KORUMALI_KLASORLER):
+            return rel
+    return None
 
 
 # ---------------------------------------------------------------- Bash ayristirma
@@ -208,16 +242,29 @@ def _git_ihlali(kalan: List[str]) -> Optional[str]:
 
 
 def _rm_ihlali(kalan: List[str]) -> Optional[str]:
-    harfler = set()
-    uzun = set()
+    """Ozyineleme (-r, -R, --recursive) ve zorlama (-f, --force) birlikte varsa engel.
+
+    Tum argumanlar taranir (bayrak sirasi ve '--' sonrasi fark etmez; muhafazakar).
+    Birlesik kisa bayraklar harf harf ayrisir (-rfv, -fr, -Rf). Uzun bayraklar
+    ad ya da getopt tarzi kisaltma olarak taninir (--recursive, --r, --force, --fo).
+    """
+    ozyineleme = zorlama = False
     for a in kalan:
         if a.startswith("--"):
-            uzun.add(a)
+            ad = a[2:].split("=", 1)[0]
+            if not ad:
+                continue
+            if RM_UZUN_OZYINELEME.startswith(ad):
+                ozyineleme = True
+            elif RM_UZUN_ZORLAMA.startswith(ad):
+                zorlama = True
         elif a.startswith("-") and len(a) > 1:
-            harfler.update(a[1:])
-    if ("r" in harfler or "R" in harfler) and "f" in harfler:
-        return "rm -rf yasak"
-    if "--recursive" in uzun and "--force" in uzun:
+            for harf in a[1:]:
+                if harf in ("r", "R"):
+                    ozyineleme = True
+                elif harf == "f":
+                    zorlama = True
+    if ozyineleme and zorlama:
         return "rm -rf yasak"
     return None
 
@@ -262,6 +309,9 @@ def _yazma_kontrol(arac: str, girdi: Dict, root: str, kontrat: Optional[Kontrat]
     yol = girdi.get("file_path") or girdi.get("notebook_path")
     if not isinstance(yol, str) or not yol:
         raise Engel(f"{arac}: hedef dosya yolu belirlenemedi")
+    korumali = _korumali_kanca_yolu(yol, root)
+    if korumali is not None:
+        raise Engel(f"kanca yapılandırması korumalı: '{korumali}' (her modda yazılamaz)")
     rel = goreli_yol(yol, root)
     if kontrat is None:
         if rel is not None and rel.startswith(KOD_YOLLARI):
