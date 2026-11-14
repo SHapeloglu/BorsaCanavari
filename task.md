@@ -6,12 +6,12 @@ Durum: 2026-11-14. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 
 - [ ] **Holdout kanıt düzeltmesini sunucuya dağıt** (`7b29738`; sunucudaki imaj bu düzeltmeden önceki). Adımlar: arşiv → yeni imaj (önceki imaj `prev-*` olarak etiketlenir) → `run-daily --dry-run` → `breaker status`. Model olmadığı için günlük akışı etkilemiyor. **Onay bekliyor.** (13 Kasım'da kayıt yok; durum sunucu tarafında doğrulanmalı)
 - [ ] **Sağlık cron'unu sunucuya ekle**: `deploy/cron_health.sh` ve `deploy/bist-tahmin.cron` içindeki 20:30 satırı, `/etc/cron.d/bist-tahmin`'e. Sunucuda henüz yok. **Onay bekliyor.** (13 Kasım'da kayıt yok; durum sunucu tarafında doğrulanmalı)
-- [ ] **11 Kasım 19:00 çalıştırmasını doğrula**: 150 yeni tahmin (`made_at=2026-11-11`), çıkış 0, `runs` son `daily` satırı `ok`, devre kesici kapalı. Tek seferlik kontrol yalnızca oturum açıkken çalışır; yoksa elle yapılır. **Süresi geçti; sonucu kayıtlı değil.** Kullanıcı ya da sunucu teyidi gerekir.
+- [ ] **11 Kasım 19:00 çalıştırmasını doğrula**: 150 yeni tahmin (`made_at=2026-11-11`), çıkış 0, `runs` son `daily` satırı `ok`, devre kesici kapalı. **Süresi geçti; sonucu kayıtlı değil.** Kullanıcı ya da sunucu teyidi gerekir.
 - [ ] **12 Kasım sabahı yedek kontrolü**: 03:50 dökümünde `bist_tahmin` ve roller var mı (`pg_dumpall` çıktısında `CREATE DATABASE bist_tahmin`). **Süresi geçti; sonucu kayıtlı değil.**
 
 ## 🚧 Devam Eden
 
-- _(yok)_ — Faz 4 yerelde tamam; canlı terfi yok, bilerek. 13 Kasım tarihli kod değişiklikleri (session.md'de kayıtlı) ana ağaçta commit edilmemiş durumda; commit kararı kullanıcıda.
+- _(yok)_ — Faz 4 yerelde tamam; canlı terfi yok, bilerek. 13 Kasım tarihli kod değişiklikleri commit edilmemiş durumda; kayıt ana ağaçtaki commit edilmemiş session.md'de (satır 93). Commit kararı kullanıcıda.
 
 ## ✅ Tamamlanan
 
