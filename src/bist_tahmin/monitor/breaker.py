@@ -101,10 +101,21 @@ def configured_cost_bps(cfg: dict) -> float:
     return resolve_cost(cfg)[0]
 
 
+def cost_label(cfg: dict) -> str:
+    """Kullanilan maliyetin bps degeri ve kaynagi (cikti etiketi). Kaynak DOGRULANMADI ise etiket bunu acikca yazar.
+    Yalniz cfg'den turetilir (cost_bps verilmez), bu yuzden kaynak 'yapilandirilmis' ya da varsayilandir."""
+    cost, source = resolve_cost(cfg)
+    if "DOGRULANMADI" in source:
+        return f"maliyet {cost:g} bps (varsayilan tahmini, DOGRULANMADI)"
+    return f"maliyet {cost:g} bps (yapilandirilmis)"
+
+
 def evaluate_model(df: pd.DataFrame, model_version: str, cfg: dict, *, after=None) -> BreakerVerdict:
-    """cfg ile tek model icin devre kesici karari (df = `drift.load_resolved` ciktisi)."""
+    """cfg ile tek model icin devre kesici karari (df = `drift.load_resolved` ciktisi). Gerekce (detail) kullanilan
+    maliyetin etiketini de tasir; hesap sayilari bu etiketten etkilenmez."""
     net, bench = model_cohort_returns(df, model_version, cost_bps=configured_cost_bps(cfg), after=after)
-    return evaluate_breaker(net, bench, int(cfg["horizon_days"]), float(cfg["circuit_breaker"]["max_relative_drawdown"]))
+    v = evaluate_breaker(net, bench, int(cfg["horizon_days"]), float(cfg["circuit_breaker"]["max_relative_drawdown"]))
+    return BreakerVerdict(v.tripped, v.relative_drawdown, f"{v.detail}; {cost_label(cfg)}")
 
 
 # --- kalici durum -------------------------------------------------------------------------------------------------
