@@ -36,7 +36,7 @@ Bu liste karar değildir. Bir madde işe dönüşürse `task.md`'ye taşınır; 
 
 ## Operasyon ve araçlar
 - **Sağlık cron'u:** `deploy/` hazır, sunucuya eklenmedi (task.md'de).
-- **Uyarı kanalı:** `ALERT.txt` ve syslog dışında bildirim yok (e-posta/Slack yok). Karar: rapor yeri (PROJE açık soru 5).
+- **Uyarı kanalı:** `ALERT.txt` (ALERT.txt sunucu yolu; repoda yok, sunucuda doğrulanmalı) ve syslog dışında bildirim yok (e-posta/Slack yok). Karar: rapor yeri (PROJE açık soru 5).
 - **CI:** yok. Tam takım yerelde; birleşik iş akışı için bir CI değerlendirilebilir.
 - **Test süresi:** tam takım 2–10 dk; hızlı alt küme tanımı (`pytest -m fast`).
 - **Dal yönetimi:** `main` yok; çalışma dalları `faz-*`. Birleştirme stratejisi ve varsayılan dal kararı gerekir.
