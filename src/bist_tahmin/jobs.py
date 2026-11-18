@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -22,6 +23,7 @@ from psycopg.types.json import Jsonb
 
 from .monitor.state import to_jsonable
 
+log = logging.getLogger(__name__)
 OK, SKIPPED, FAILED = "ok", "skipped", "failed"
 
 
@@ -51,9 +53,13 @@ def checkpoint(conn: psycopg.Connection, run: JobRun) -> None:
 
 @contextmanager
 def tracked_job(
-    conn: psycopg.Connection, job: str, run_date: dt.date, *, record: bool = True
+    conn: psycopg.Connection, job: str, run_date: dt.date, *, record: bool = True, lock_job: str | None = None
 ) -> Iterator[JobRun]:
-    key = _lock_key(job)
+    """`job` hem `runs` kaydinin adi hem (lock_job verilmezse) kilit anahtarinin kaynagidir.
+
+    `lock_job`: kilidi baska bir isle PAYLASMAK icin (ornek: breaker reset, gunluk akisla ayni kilidi alir; boylece
+    ikisi ayni anda calismaz ve devre kesici durumu yarisa girmez). Kayit yine `job` adiyla yazilir."""
+    key = _lock_key(lock_job or job)
     if not conn.execute("SELECT pg_try_advisory_lock(%s)", (key,)).fetchone()[0]:
         if record:  # kilit baskasinda: iz birak (silent skip olmasin)
             conn.execute(
@@ -61,7 +67,7 @@ def tracked_job(
                 "VALUES (%s, %s, now(), now(), 'skipped', %s)",
                 (job, run_date, Jsonb({"reason": "locked"})),
             )
-        raise JobLocked(f"{job} zaten calisiyor")
+        raise JobLocked(f"{lock_job or job} zaten calisiyor")
     run = JobRun(job=job, run_date=run_date)
     try:
         if record:
@@ -72,12 +78,19 @@ def tracked_job(
         try:
             yield run
         except BaseException as exc:
-            _finish(conn, run, FAILED, {**run.detail, "error": f"{type(exc).__name__}: {exc}"[:500]})
+            # Asil istisna, kayit yazilamasa bile (ornek: baglanti kopuk) maskelenmez.
+            try:
+                _finish(conn, run, FAILED, {**run.detail, "error": f"{type(exc).__name__}: {exc}"[:500]})
+            except Exception as finish_exc:
+                log.error("runs kaydi FAILED olarak yazilamadi: %s", finish_exc)
             raise
         else:
             _finish(conn, run, run.status, run.detail)
     finally:
-        conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+        try:
+            conn.execute("SELECT pg_advisory_unlock(%s)", (key,))
+        except Exception as unlock_exc:  # baglanti kopuksa kilit oturum sonunda zaten duser
+            log.error("kilit serbest birakilamadi (%s): %s", job, unlock_exc)
 
 
 def _jsonable(obj):

@@ -91,6 +91,7 @@ class DailyResult:
     models_ok: list[str] = field(default_factory=list)                # satiri uretilip yazilan model surumleri
     model_errors: dict[str, str] = field(default_factory=dict)        # surum -> "Tip: mesaj" (atlanan model)
     models_paused: str | None = None                                  # devre kesici acik ise nedeni
+    conflicts: int = 0                                                # mevcut satirla icerigi farkli (atlanan) satir
 
     def summary_lines(self) -> list[str]:
         verb = "yazilacak (kuru calisma)" if self.dry_run else "yazildi"
@@ -100,6 +101,9 @@ class DailyResult:
             f"tahmin {verb}: {self.inserted}; zaten vardi: {self.skipped_existing}",
             "geçmiş yukselis orani: " + ("yok (yetersiz ornek)" if self.base_rate is None else f"{self.base_rate:.4f}"),
         ]
+        if self.conflicts:
+            lines.append(f"UYARI: {self.conflicts} mevcut tahmin satiri farkli iceriklerle yeniden uretildi; "
+                         "mevcut satirlar korundu (veri/kod degisikligi incelenmeli)")
         lines += [f"DISLANAN {t}: {why}" for t, why in sorted(self.excluded.items())]
         lines += [f"BASELINE ATLANDI {n}: {c} hisse (girdi yetersiz)" for n, c in sorted(self.skipped_baselines.items())]
         if self.models_paused:
@@ -200,6 +204,7 @@ def run_daily(
     check_window(rows)
     wr = write_predictions(conn, rows, dry_run=dry_run, created_at=created_at)
     res.inserted, res.skipped_existing = wr.inserted, wr.skipped_existing
+    res.conflicts += wr.conflicts
 
     # --- Faz 4: modeller (baseline'lar yukarida yazildi; buradaki hicbir hata onlari etkileyemez) ---------------
     _run_models(conn, cfg, fs, res, day=day, horizon=horizon, clip=clip, dry_run=dry_run,
@@ -271,3 +276,4 @@ def _run_models(conn, cfg, fs, res: DailyResult, *, day, horizon, clip, dry_run,
         res.models_ok.append(version)
         res.models_written += wr.inserted
         res.models_skipped_existing += wr.skipped_existing
+        res.conflicts += wr.conflicts

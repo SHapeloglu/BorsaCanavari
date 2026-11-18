@@ -56,6 +56,9 @@ class WriteResult:
     inserted: int
     skipped_existing: int
     dry_run: bool
+    # Atlanan (zaten var olan) satirlardan icerigi (feature_hash ya da prob_up) FARKLI olanlar: mevcut satir korunur
+    # ama bu bir veri/kod degisikliginin isareti olabilir. Yalnizca gercek yazimda hesaplanir (kuru calismada 0).
+    conflicts: int = 0
 
 
 def _is_number(x) -> bool:
@@ -128,10 +131,20 @@ def write_predictions(conn, rows, *, dry_run: bool = False, created_at: dt.datet
                     would_insert += 1
             return WriteResult(inserted=would_insert, skipped_existing=len(rows) - would_insert, dry_run=True)
         inserted = 0
+        conflicts = 0
         for row in rows:
             cur = conn.execute(_INSERT_SQL, _params(row, created_at))
-            inserted += cur.rowcount
-    return WriteResult(inserted=inserted, skipped_existing=len(rows) - inserted, dry_run=False)
+            if cur.rowcount:
+                inserted += cur.rowcount
+                continue
+            ex = conn.execute(
+                "SELECT prob_up, feature_hash FROM predictions WHERE ticker = %s AND made_at = %s"
+                " AND horizon_days = %s AND model_version = %s",
+                row.key,
+            ).fetchone()
+            if ex is None or ex[1] != row.feature_hash or abs(float(ex[0]) - float(row.prob_up)) > 1e-12:
+                conflicts += 1
+    return WriteResult(inserted=inserted, skipped_existing=len(rows) - inserted, dry_run=False, conflicts=conflicts)
 
 
 def _canonical(obj):

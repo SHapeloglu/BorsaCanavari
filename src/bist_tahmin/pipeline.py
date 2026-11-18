@@ -57,7 +57,8 @@ def _monitor(conn, cfg: dict, out: PipelineResult, step, *, dry_run: bool, clock
         st = breaker.status(conn)
         records = daily_mod.load_active_models(conn)
         versions = [str(r.version) for r in records]
-        df = drift.load_resolved(conn, [*versions, drift.REFERENCE_VERSION]) if versions else None
+        df = (drift.load_resolved(conn, [*versions, drift.REFERENCE_VERSION], horizon_days=int(cfg["horizon_days"]))
+              if versions else None)
         after = breaker.evaluate_after_date(st)
         info: dict = {"breaker_open": bool(st["tripped"]), "evaluate_after": after.isoformat() if after else None,
                       "models": {}}
@@ -184,8 +185,11 @@ def run_pipeline(
         step("resolve", {"resolved": rres.resolved, "skipped": dict(rres.skipped), "details": rres.details[:20],
                          "overdue": overdue})
         out.lines.append(f"[resolve] cozulen {rres.resolved}; atlanan {dict(rres.skipped) or '-'}")
+        # Eksik bar / gecersiz fiyat / fiyatsiz uye vade gelmis bir tahmini COZEMEDIGI icin sessizce atlanmamali;
+        # 'not_due' ve 'horizon_unknown' normal akistir (vade henuz gelmedi / takvim yetmiyor) bu listede degil.
         flagged = {k: v for k, v in rres.skipped.items()
-                   if k in ("adjustment_mismatch", "unexplained_jump", "stale_ticker", "error")}
+                   if k in ("adjustment_mismatch", "unexplained_jump", "stale_ticker", "error",
+                            "missing_bar", "invalid_price", "no_prices")}
         if flagged:
             out.bump(1)
             out.lines.append(f"[resolve] UYARI: cozulmeyen satirlar {flagged} (ayrinti runs.detail)")
@@ -218,7 +222,8 @@ def run_pipeline(
                                  "universe": dres.universe, "coverage": round(cov, 3), "excluded": dres.excluded,
                                  "base_rate": dres.base_rate, "skipped_baselines": dres.skipped_baselines,
                                  "models_written": dres.models_written, "models_ok": dres.models_ok,
-                                 "model_errors": dres.model_errors, "models_paused": dres.models_paused})
+                                 "model_errors": dres.model_errors, "models_paused": dres.models_paused,
+                                 "conflicts": dres.conflicts})
                 out.lines += ["[predict] " + s for s in dres.summary_lines()]
                 if cov < min_coverage:
                     out.bump(1)
@@ -232,6 +237,10 @@ def run_pipeline(
                     out.bump(1)
                     out.lines.append(f"[predict] UYARI: {len(dres.model_errors)} model atlandi "
                                      f"({', '.join(sorted(dres.model_errors))}); baseline'lar etkilenmedi")
+                if dres.conflicts:
+                    out.bump(1)
+                    out.lines.append(f"[predict] UYARI: {dres.conflicts} tahmin satiri mevcut icerikle celisiyor "
+                                     "(defter korunur; veri/kod degisikligi incelenmeli)")
                 if dres.models_paused:
                     out.bump(1)
                     out.lines.append(f"[predict] UYARI: model uretimi DURDURULDU: {dres.models_paused}")

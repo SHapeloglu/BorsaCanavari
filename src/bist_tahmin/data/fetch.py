@@ -125,6 +125,12 @@ def fetch_all(
         log.error("%s hatasi: %s", CALENDAR_SYMBOL, exc)
     pace()
 
+    if CALENDAR_SYMBOL in res.errors:
+        # Takvim kaynagi yoksa hisseler kalite kontrolunden (eksik gun denetimi) gecmeden YAZILMAZ: fiyat yazilip
+        # takvim yazilmamis bir durum olusmasin. Hisseler indirilmez; pipeline bunu zaten hata olarak raporlar.
+        log.error("%s alinamadi: hisseler bu calismada islenmedi", CALENDAR_SYMBOL)
+        return res
+
     for ticker in sorted({t.strip().upper() for t in tickers}):
         try:
             df = _with_retry(lambda t=ticker: source.history(t, start, end), f"{ticker} history",
@@ -148,16 +154,15 @@ def fetch_all(
                     res.excluded[ticker] = reason[:500]
                     log.warning("%s DISLANDI (kalite): %s", ticker, reason)
                     continue
-            if not dry_run:
-                res.written[ticker] = store.upsert_prices(conn, ticker, df, src_name, fetched_at)
-            else:
-                res.written[ticker] = len(df)
+            # Once kurumsal islemler (hata verirse fiyat da yazilmaz: yarim hisse kalmaz), sonra fiyat ve islemler.
             pace()
             actions = _with_retry(lambda t=ticker: source.corporate_actions(t), f"{ticker} actions",
                                   retries, pause, sleep)
             if not dry_run:
+                res.written[ticker] = store.upsert_prices(conn, ticker, df, src_name, fetched_at)
                 res.actions_written[ticker] = store.upsert_corporate_actions(conn, ticker, actions, fetched_at)
             else:
+                res.written[ticker] = len(df)
                 res.actions_written[ticker] = len(actions)
         except Exception as exc:  # tek hisse tum isi dusurmesin
             res.errors[ticker] = f"{type(exc).__name__}: {exc}"

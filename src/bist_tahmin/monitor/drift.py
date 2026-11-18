@@ -43,17 +43,21 @@ class DriftResult:
                 "note": self.note}
 
 
-def load_resolved(conn: psycopg.Connection, versions: Iterable[str]) -> pd.DataFrame:
-    """Verilen model surumlerinin COZULMUS canli tahminleri (salt okunur). made_at datetime64[ns]."""
+def load_resolved(conn: psycopg.Connection, versions: Iterable[str], *, horizon_days: int | None = None) -> pd.DataFrame:
+    """Verilen model surumlerinin COZULMUS canli tahminleri (salt okunur). made_at datetime64[ns].
+
+    horizon_days verilirse yalnizca o ufuktaki satirlar (promote.py ile ayni kural: farkli ufuklar karismaz)."""
     versions = sorted(set(versions))
     cols = list(RESOLVED_COLUMNS)
     if not versions:
         return pd.DataFrame({c: [] for c in cols})
-    rows = conn.execute(
-        "SELECT made_at, ticker, model_version, model_role, prob_up, score, label_up, tradable_ret, resolved_at "
-        "FROM predictions WHERE resolved_at IS NOT NULL AND model_version = ANY(%s) ORDER BY made_at, ticker",
-        (versions,),
-    ).fetchall()
+    sql = ("SELECT made_at, ticker, model_version, model_role, prob_up, score, label_up, tradable_ret, resolved_at "
+           "FROM predictions WHERE resolved_at IS NOT NULL AND model_version = ANY(%s)")
+    params: list = [versions]
+    if horizon_days is not None:
+        sql += " AND horizon_days = %s"
+        params.append(int(horizon_days))
+    rows = conn.execute(sql + " ORDER BY made_at, ticker", params).fetchall()
     df = pd.DataFrame(rows, columns=cols)
     df["made_at"] = pd.to_datetime(df["made_at"]).astype("datetime64[ns]")
     for c in ("prob_up", "score", "tradable_ret"):

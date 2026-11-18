@@ -4,6 +4,28 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-18
+
+**Yapılanlar:**
+- Kullanıcı dört öneriyi onayladı: holdout dağıtımı, sağlık cron'u, commit'ler, K1 birleştirme ve kapsam kancasının üçüncü turu.
+- Kapsam kancası üçüncü tur (`agent/kontrol-katmani`, commit `91f3390`): değişkenli/komut ikameli yıkıcı komutlar, xargs ile yıkıcı hedef, find -delete/-exec, eval/source/bare kabuk, satır içi python -c/perl -e, ANSI-C kaçışı engellendi. Bash ile yazma sözleşme modunda yasak; lider modunda kod ve kanca yollarına yazma engel. Şablondan `echo` kaldırıldı. Testler: `scripts/tests/test_scope_guard.py` (50) + `test_scope_guard_bash.py` (18) = 68 OK.
+- Ana ağaç: 12 inceleme düzeltmesi, `tests/test_review_fixes.py`, `deploy/` iki salt okunur betik, `.claude/` ayarları commit'lendi. Tam takım: 736 passed, 3 skipped, çıkış 0 (946 s), commit öncesi.
+- Sunucu: ssh erişimi bu oturumda izin sisteminde reddedildi. Sunucuya **hiçbir değişiklik yapılmadı**. Holdout dağıtımı ve sağlık cron'u onaylı ama bekliyor (`task.md`).
+
+**Kararlar / neden:**
+- Kanca için sınır değil uyarı katmanı: yorumlayıcının dosya çalıştırması (/tmp'e yazıp python3 ile çalıştırma), sözleşme modunda `python3 -m unittest` ile test kodunun yan etkisi ve Read aracı kapsam dışı. Bunlar `TEMPLATE.json` ve hook başlığında belgelendi.
+- Holdout dağıtımı 7b29738 ağacından derlenir; çalışma ağacındaki 12 düzeltme sunucuya gitmez (onay kapsamı dışı).
+
+**Açık sorunlar:**
+- Sunucu imajı holdout düzeltmesinden önce.
+- Sağlık cron'u sunucuda yok.
+- K1 birleştirme (`agent/verify-script`, `agent/kontrol-katmani`) kullanıcı tarafından yapılacak; lider `git merge` izin listesinde yasak.
+- 11 Kasım 19:00 çalıştırması ve 12 Kasım yedek kontrolü hâlâ doğrulanmadı.
+
+**Sıradaki adım:** Sunucu erişimi açılırsa `task.md` ilk iki madde; ardından K1 birleştirme ve kanca pilotu.
+
+---
+
 ## 2026-11-11
 
 **Yapılanlar:**
@@ -87,6 +109,32 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 **Açık sorunlar:**
 - `CRON_TZ` desteklenmiyor: çözüm geçici, dokümante.
+
+---
+
+## 2026-11-13
+**Yapılanlar:** Salt-okunur inceleme bulgularının uygulanması (commit atılmadı, çalışma ağacında):
+- Vade gelmiş tahminde `missing_bar`, `invalid_price`, `no_prices` artık uyarı (`pipeline.py`).
+- Takvim (XU100) indirilemezse hisseler indirilmez/yazılmaz (`data/fetch.py`).
+- `breaker reset` gunluk akisin kilidini (`lock_job='daily'`) bekler ve `runs`a `breaker-reset` olarak yazilir (`cli.py`, `jobs.py`).
+- Kurumsal islemler fiyattan once cekilir; hata olursa fiyat yazilmaz (`data/fetch.py`).
+- Defter: ayni anahtarli ama icerigi farkli atlanan satirlar sayilir ve uyari verilir (`predict/ledger.py`, `predict/daily.py`).
+- Drift okuma ufuga gore suzulur (`monitor/drift.py`).
+- `--use-holdout` icin `--confirm-holdout` zorunlu (`cli.py`).
+- Egitim kaydina `dropped_nonfinite_rows`; ozellik surumu eksikse reddedilir (`models/train.py`).
+- `run_health` kullanilmayan `cfg` parametresi kaldirildi; `fetch` beklenmeyen hatada temiz cikar.
+- Yeni testler: `tests/test_review_fixes.py` (9 test). Tam takim: 735 passed, 3 skipped, cikis 0.
+
+**Kararlar / neden:**
+- Cron yeniden denemesi (exit 1'de 19:45) bilerek degistirilmedi: exit 1 "eksik veri" anlamina geliyor ve gec gelen veri icin yeniden deneme isin amaci. Bedeli bir idempotent ekstra calisma.
+- Maliyet varsayilani (10 bps) ve devre kesici/terfi maliyet kurali degistirilmedi: politika karari gerektiriyor.
+- `app.allow_promote` GUC sinirini SECURITY DEFINER'a tasima degistirilmedi: veritabani migration'i ve sunucu onayi (K2) gerektirir.
+- `source.py` kismi bolunme uyusmazligini hataya cevirme degistirilmedi: borsapy veri farkliliklarinda yanlis pozitif riski var.
+- Takvim tatil bilgisi (idari izin) ve baz oranlarin ardisik-bar varsayimi degistirilmedi: davranis degisikligi, ayri karar.
+
+**Acik sorunlar:** Sunucu imaji bu degisikliklerden onceki surumde; dagitim K2 onayi bekliyor.
+
+**Sıradaki adım:** Degisikliklerin commit'i (kullanici onayi) ve sonra dagitim karari.
 
 ---
 

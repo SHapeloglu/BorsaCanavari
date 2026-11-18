@@ -82,13 +82,15 @@ def _prepare(frame: pd.DataFrame, spec: lab.ModelSpec) -> pd.DataFrame:
 
 
 def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge_days: int,
-            excl_from: pd.Timestamp | None) -> tuple[pd.DataFrame, pd.Timestamp | None]:
+            excl_from: pd.Timestamp | None) -> tuple[pd.DataFrame, pd.Timestamp | None, int]:
+    """(satirlar, train_end, NaN ozellik/etiket yuzunden dusen satir sayisi). Dusen satirlar sessiz degil: sayisi
+    egitim kaydina (params.extra.dropped_nonfinite_rows) yazilir."""
     f = _prepare(frame, spec)
     dates = pd.to_datetime(f["date"])
     ends = pd.to_datetime(f["end_date"])
     train_end = _train_end(pd.DatetimeIndex(dates.drop_duplicates().sort_values()), as_of, purge_days)
     if train_end is None:
-        return f.iloc[0:0].copy(), None
+        return f.iloc[0:0].copy(), None, 0
     mask = ((dates <= train_end) & (ends <= as_of)).to_numpy()  # NaT -> False
     if excl_from is not None:  # holdout: satir ve etiket penceresi sinirin ONCESINDE bitmeli
         mask = mask & (dates < excl_from).to_numpy() & (ends < excl_from).to_numpy()
@@ -100,12 +102,14 @@ def _select(frame: pd.DataFrame, spec: lab.ModelSpec, as_of: pd.Timestamp, purge
     x = f[feats].to_numpy(dtype=float)
     y = pd.to_numeric(f[spec.label], errors="coerce").to_numpy(dtype=float)
     # not: 'mask &= ...' pandas'in salt-okunur (copy-on-write) dizisinde ValueError verir; yeni dizi uretilir
+    before_finite = int(mask.sum())
     mask = mask & np.isfinite(x).all(axis=1) & np.isfinite(y)
+    n_dropped = before_finite - int(mask.sum())
     rows = f.loc[mask].copy()
     rows["date"] = pd.to_datetime(rows["date"])
     rows["end_date"] = pd.to_datetime(rows["end_date"])
     rows = rows.sort_values(["date", "ticker"] if "ticker" in rows.columns else ["date"], kind="stable")
-    return rows.reset_index(drop=True), train_end
+    return rows.reset_index(drop=True), train_end, n_dropped
 
 
 def training_rows(
@@ -118,7 +122,7 @@ def training_rows(
     """
     purge_days, horizon_days = _check_days(purge_days, horizon_days)
     excl = _holdout_cut(holdout_start, include_holdout)
-    rows, _ = _select(frame, spec, _as_day(as_of, "as_of"), purge_days, excl)
+    rows, _, _ = _select(frame, spec, _as_day(as_of, "as_of"), purge_days, excl)
     return rows
 
 
@@ -141,7 +145,7 @@ def train_model(
     purge_days, horizon_days = _check_days(purge_days, horizon_days)
     as_of = _as_day(as_of, "as_of")
     excl = _holdout_cut(holdout_start, include_holdout)
-    rows, train_end = _select(frame, spec, as_of, purge_days, excl)
+    rows, train_end, n_dropped = _select(frame, spec, as_of, purge_days, excl)
     if train_end is None:
         raise ValueError(f"as_of ({as_of.date()}) oncesinde purge_days ({purge_days}) kadar gun yok: egitilemez")
     n = len(rows)
@@ -167,6 +171,7 @@ def train_model(
         "purge_days": purge_days,
         "horizon_days": horizon_days,
         "n_rows": int(n),
+        "dropped_nonfinite_rows": int(n_dropped),
         "n_train_days": int(rows["date"].nunique()),
         "train_date_min": rows["date"].min().date().isoformat(),
         "train_date_max": rows["date"].max().date().isoformat(),
@@ -210,7 +215,7 @@ def train_and_register(
         raise ValueError(f"veri seti ufku ({ds.horizon_days}) yapilandirmayla ({horizon}) uyusmuyor")
     purge_days = int(cfg["training"]["purge_days"])
     ds_fv = (ds.meta or {}).get("feature_version")
-    if ds_fv is not None and ds_fv != FEATURE_VERSION:
+    if ds_fv != FEATURE_VERSION:  # eksik surum da reddedilir (fail-closed): dogrulanamayan veri egitime girmez
         raise ValueError(f"veri seti ozellik surumu {ds_fv!r} kodun surumu {FEATURE_VERSION!r} ile uyusmuyor")
     last = pd.to_datetime(ds.frame["date"]).max() if len(ds.frame) else pd.NaT
     if pd.isna(last) or last < as_of:

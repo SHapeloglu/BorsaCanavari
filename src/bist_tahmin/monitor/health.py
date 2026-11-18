@@ -185,7 +185,7 @@ def check_stuck_runs(conn: psycopg.Connection, now: dt.datetime) -> Check:
 
 
 def run_health(
-    conn: psycopg.Connection, cfg: dict | None = None, *, now: dt.datetime | None = None, max_age_hours: float = 72.0
+    conn: psycopg.Connection, *, now: dt.datetime | None = None, max_age_hours: float = 72.0
 ) -> HealthReport:
     """Tum kontrolleri calistirir. Salt okunur. `max_age_hours`: son 'ok' akisin en fazla yasi (varsayilan 72 saat:
     hafta sonu + tek gunluk tatili kapsar)."""

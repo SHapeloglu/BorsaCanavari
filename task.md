@@ -4,8 +4,9 @@ Durum: 2026-11-11. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 
 ## 🔜 Sıradaki
 
-- [ ] **Holdout kanıt düzeltmesini sunucuya dağıt** (`7b29738`; sunucudaki imaj bu düzeltmeden önceki). Adımlar: arşiv → yeni imaj (önceki imaj `prev-*` olarak etiketlenir) → `run-daily --dry-run` → `breaker status`. Model olmadığı için günlük akışı etkilemiyor. **Onay bekliyor.**
-- [ ] **Sağlık cron'unu sunucuya ekle**: `deploy/cron_health.sh` ve `deploy/bist-tahmin.cron` içindeki 20:30 satırı, `/etc/cron.d/bist-tahmin`'e. Sunucuda henüz yok. **Onay bekliyor.**
+- [ ] **Holdout kanıt düzeltmesini sunucuya dağıt** (`7b29738`; sunucudaki imaj bu düzeltmeden önceki). **Onaylandı (2026-11-18), sunucuda henüz yapılmadı:** bu oturumda ssh erişimi izin sisteminde reddedildi. Adımlar: imajı `7b29738` ağacından derle (çalışma ağacındaki yerel değişiklikler dahil edilmez) → önceki imaj `prev-20261118` olarak etiketlenir → `run-daily --dry-run` → `breaker status`. Model olmadığı için günlük akışı etkilemiyor. Sunucu değişikliği `session.md`'ye yazılır.
+- [ ] **Sağlık cron'unu sunucuya ekle** (**onaylandı, uygulanmadı**): önce salt okunur kontrol `docker compose run --rm --no-deps -T bist health`; sonra `sudo cp deploy/bist-tahmin.cron /etc/cron.d/bist-tahmin` ve içeriği doğrula. 20:30 satırı `cron_health.sh` ile çalışır. Cron pencereleri (19:00, 19:45, cumartesi 10:00) dışında yapılır.
+- [ ] **K1 birleştirme** (**onaylandı, yapılmadı**): `git merge agent/verify-script`, sonra `git merge agent/kontrol-katmani` (`91f3390`). Çakışma beklenen dosya: `.claude/settings.json`; kontrol-katmani sürümü (hooks + deny) alınır. Lider oturumunun Bash izin listesinde `git merge` yasak olduğu için bu adım kullanıcı tarafından çalıştırılır. Birleştirme sonrası kanca lider oturumunda da etkin olur.
 - [ ] **11 Kasım 19:00 çalıştırmasını doğrula**: 150 yeni tahmin (`made_at=2026-11-11`), çıkış 0, `runs` son `daily` satırı `ok`, devre kesici kapalı. Tek seferlik kontrol yalnızca oturum açıkken çalışır; yoksa elle yapılır.
 - [ ] **12 Kasım sabahı yedek kontrolü**: 03:50 dökümünde `bist_tahmin` ve roller var mı (`pg_dumpall` çıktısında `CREATE DATABASE bist_tahmin`).
 

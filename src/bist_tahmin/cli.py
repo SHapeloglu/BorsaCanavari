@@ -136,7 +136,11 @@ def _cmd_fetch(args: argparse.Namespace) -> int:
             return 2
         print(f"{prefix}{len(tickers)} hisse + XU100, since={since}")
         # Kalite kontrolu (data/quality.py) ve bugunun yarim barinin elenmesi varsayilan olarak acik.
-        res = fetch_all(_make_source(), conn, tickers, since, dry_run=args.dry_run)
+        try:
+            res = fetch_all(_make_source(), conn, tickers, since, dry_run=args.dry_run)
+        except Exception as exc:  # kaynak kurulumu / beklenmeyen hata: traceback yerine temiz cikis
+            print(f"hata: indirme basarisiz: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
     for line in res.summary_lines():
         print(f"{prefix}{line}")
     return 0 if res.ok else 1
@@ -238,9 +242,9 @@ def _cmd_health(args: argparse.Namespace) -> int:
         _need_db_message()
         return 2
     try:
-        cfg = load_config(args.config)
+        load_config(args.config)  # yalnizca gecerli bir yapilandirma ile calisir
         with conn:
-            report = run_health(conn, cfg, max_age_hours=args.max_age_hours)
+            report = run_health(conn, max_age_hours=args.max_age_hours)
     except (ConfigError, ValueError) as exc:
         print(f"hata: {exc}", file=sys.stderr)
         return 2
@@ -295,13 +299,24 @@ def _cmd_breaker_reset(args: argparse.Namespace) -> int:
         _need_db_message()
         return 2
     prefix = "[dry-run] " if args.dry_run else ""
+    from .jobs import JobLocked, tracked_job
+
     try:
         with conn:
-            before = breaker.status(conn)
             if args.dry_run:
+                before = breaker.status(conn)
                 print(f"{prefix}devre kesici su an {'ACIK' if before['tripped'] else 'kapali'}; gerekce: {reason}")
                 return 0
-            new = breaker.reset(conn, reason)
+            # Gunluk akisla AYNI kilit (lock_job='daily'): akis devre kesiciyi tetiklerken reset yarisa girmez.
+            # Kayit 'breaker-reset' adiyla runs tablosuna yazilir (denetim izi).
+            with tracked_job(conn, "breaker-reset", _today_istanbul(), lock_job="daily") as run:
+                before = breaker.status(conn)
+                new = breaker.reset(conn, reason)
+                run.detail.update({"reason": reason, "was_tripped": bool(before["tripped"]),
+                                   "evaluate_after": new["evaluate_after"]})
+    except JobLocked as exc:
+        print(f"atlandi: {exc}; gunluk akis bitince tekrar deneyin", file=sys.stderr)
+        return 4
     except psycopg.Error as exc:
         print(f"hata: veritabani: {type(exc).__name__}", file=sys.stderr)
         return 2
@@ -393,6 +408,10 @@ def _cmd_backtest_run(args: argparse.Namespace) -> int:
     from .backtest.guard import HoldoutLocked
     from .backtest.runner import run_experiment
 
+    if args.use_holdout and not args.confirm_holdout:  # veri seti yuklenmeden ve baglanti acilmadan reddedilir
+        print("hata: --use-holdout icin --confirm-holdout da verilmeli: dokunulmaz sinama kumesi yalnizca gercek "
+              "bir terfi kararinda acilir. Hicbir sey calistirilmadi.", file=sys.stderr)
+        return 2
     conn = _app_conn_or_none()
     if conn is None:
         _need_db_message()
@@ -786,6 +805,7 @@ def build_parser() -> argparse.ArgumentParser:
     br.add_argument("--seed", type=int, default=0)
     br.add_argument("--out", default=None, help="sonucu markdown olarak dosyaya da yaz")
     br.add_argument("--use-holdout", action="store_true", help="YALNIZCA terfi asamasi: dokunulmaz sinama kumesini ac (loglanir)")
+    br.add_argument("--confirm-holdout", action="store_true", help="--use-holdout ile birlikte zorunlu onay (yoksa cikis 2)")
     br.add_argument("--dry-run", action="store_true", help="veritabanina yazma (deneme sayilmaz)")
     br.set_defaults(func=_cmd_backtest_run)
 
