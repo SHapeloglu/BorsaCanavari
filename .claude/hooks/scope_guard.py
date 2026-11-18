@@ -17,6 +17,15 @@
 # Genel yasaklar (her modda, Bash): ssh, scp, docker, git push/pull/merge,
 #   git reset --hard, rm ile ozyineleme (-r/-R/--recursive) ve zorlama (-f/--force) birlikte
 #   (bayrak sirasi ve birlesik bicim fark etmez), .env dosyasi kullanimi.
+# Ek Bash kurallari (her modda): degisken/komut ikamesi ($, `) yikici komutla birlikteyse,
+#   ANSI-C dizgi ($'...\..'), eval/source/exec/., bayrak yoksa kabuk ya da yorumlayici
+#   (stdin betigi), satir ici yorumlayici kodu (python -c, perl -e, awk), xargs ile yikici
+#   komut, find -delete/-exec yasak.
+# Bash ile dosya yazma (> >> tee cp mv dd sed -i, git checkout/restore vb.):
+#   sozlesme modunda hic yok (yazma Edit/Write + write listesiyle yapilir); lider modunda
+#   yalnizca komut KOD_ISARETLERI'nden (kod yollari, .claude/, settings.json) birini anarsa engel.
+# Bilinen sinirlar (kanca tek basina sinir degildir): yorumlayici icindeki dosya islemleri
+#   (ornegin python3 -m modul calistirmasi), kabuk disi sistem cagrilari ve Read araci kapsam disi.
 # Hata durumu (JSON, sozlesme, beklenmeyen istisna): kapali basarisizlik, exit 2.
 
 import fnmatch
@@ -53,6 +62,30 @@ KABUK_ISIMLERI = frozenset({"sh", "bash", "zsh", "dash"})
 GIT_ARGUMANLI_SECENEKLER = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
 GIT_YASAK_ALT_KOMUTLAR = frozenset({"push", "pull", "merge"})
 MAX_KABUK_DERINLIGI = 4
+
+# Yikici ya da kabuk kacisi icin kullanilabilecek komutlar. Degisken acilimi ve xargs
+# hedefi olarak gorulurse engellenir (fail-closed; isim metinde gecmesi yeterli).
+YIKICI_KOMUTLAR = frozenset({
+    "rm", "unlink", "shred", "rmdir", "dd", "mv", "cp", "chmod", "chown", "ln", "tee",
+    "install", "truncate", "sed", "awk", "find", "xargs", "env", "sudo", "exec", "eval",
+    "source", "sh", "bash", "zsh", "dash", "python", "python3", "perl", "node", "ruby",
+    "php", "lua", "ssh", "scp", "docker", "git",
+})
+DINAMIK_DESENI = re.compile(r"\$|`")
+ANSI_C_DIZGI = re.compile(r"\$'[^']*\\")
+FIND_YIKICI_BAYRAKLAR = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir"})
+KABUK_KACISI_KOMUTLARI = frozenset({"eval", "source", "exec", "."})
+YORUMLAYICILAR = frozenset({"python", "python3", "perl", "ruby", "node", "php", "lua"})
+# Lider modunda Bash ile yazmanin kod ya da kanca yapilandirmasina dokunmasini engelleyen isaretler.
+KOD_ISARETLERI = ("src/", "tests/", "scripts/", "deploy/", ".claude/", "settings.json")
+YAZMA_KOMUTLARI = frozenset({
+    "tee", "cp", "mv", "dd", "install", "truncate", "ln", "rsync", "chmod", "chown",
+    "touch", "mkdir", "rmdir", "unlink", "shred", "patch",
+})
+GIT_YAZMA_ALTKOMUTLARI = frozenset({
+    "checkout", "restore", "clean", "apply", "am", "stash", "reset", "rebase",
+    "cherry-pick", "mv", "rm",
+})
 
 
 class Engel(Exception):
@@ -220,7 +253,8 @@ def komut_tokenlari(tokenlar: List[str]) -> List[str]:
     return tokenlar[i:]
 
 
-def _git_ihlali(kalan: List[str]) -> Optional[str]:
+def _git_altkomut(kalan: List[str]) -> Optional[int]:
+    """git alt komutunun konumunu dondurur (genel secenekler atlanir); yoksa None."""
     i = 0
     while i < len(kalan):
         a = kalan[i]
@@ -230,8 +264,13 @@ def _git_ihlali(kalan: List[str]) -> Optional[str]:
         if a.startswith("-"):
             i += 1
             continue
-        break
-    if i >= len(kalan):
+        return i
+    return None
+
+
+def _git_ihlali(kalan: List[str]) -> Optional[str]:
+    i = _git_altkomut(kalan)
+    if i is None:
         return None
     alt = kalan[i]
     if alt in GIT_YASAK_ALT_KOMUTLAR:
@@ -239,6 +278,25 @@ def _git_ihlali(kalan: List[str]) -> Optional[str]:
     if alt == "reset" and "--hard" in kalan[i + 1:]:
         return "git reset --hard yasak"
     return None
+
+
+def _kabuk_c_konumu(kalan: List[str]) -> Optional[int]:
+    """Kabuk argumanlarinda -c bayragi (birlesik bicim dahil: -ec, -lc) varsa konumu."""
+    for k, t in enumerate(kalan):
+        if t.startswith("-") and not t.startswith("--") and "c" in t[1:]:
+            return k
+    return None
+
+
+def _satir_ici_veya_stdin(kalan: List[str]) -> bool:
+    """Yorumlayici argumanlari satir ici kod (-c/-e, birlesik bicim dahil), stdin betigi
+    (arguman yok ya da '-') iceriyorsa True. Dosya ya da '-m modul' cagrisi False."""
+    if not kalan or "-" in kalan:
+        return True
+    for t in kalan:
+        if t.startswith("-") and not t.startswith("--") and ("c" in t[1:] or "e" in t[1:]):
+            return True
+    return False
 
 
 def _rm_ihlali(kalan: List[str]) -> Optional[str]:
@@ -269,6 +327,23 @@ def _rm_ihlali(kalan: List[str]) -> Optional[str]:
     return None
 
 
+def _komut_konumu_ihlali(kom: List[str]) -> Optional[str]:
+    """Segmentin komut konumundaki (atamalardan sonraki ilk) kelimeyi denetler."""
+    if not kom:
+        return None
+    taban = os.path.basename(kom[0])
+    kalan = kom[1:]
+    if taban in KABUK_KACISI_KOMUTLARI:
+        return f"{taban} yasak (komut kaçışı)"
+    if taban in KABUK_ISIMLERI and _kabuk_c_konumu(kalan) is None and (not kalan or "-" in kalan):
+        return f"{taban} stdin'den betik çalıştırır; yasak (dosya ya da 'sh -c' kullanılmalı)"
+    if taban == "awk":
+        return "awk yasak (sistem çağrısı yapabilir)"
+    if taban in YORUMLAYICILAR and _satir_ici_veya_stdin(kalan):
+        return f"{taban} satır içi kod ya da stdin betiği yasak; betik dosyası kullanılmalı"
+    return None
+
+
 def _segment_ihlali(tokenlar: List[str], derinlik: int) -> Optional[str]:
     for t in tokenlar:
         taban = os.path.basename(YONLENDIRME_ONEKI.sub("", t))
@@ -276,20 +351,89 @@ def _segment_ihlali(tokenlar: List[str], derinlik: int) -> Optional[str]:
             return f"{taban} komutu yasak"
         if ENV_DOSYASI_DESENI.fullmatch(taban):
             return ".env dosyası okunamaz ya da işlenemez"
+    sebep = _komut_konumu_ihlali(komut_tokenlari(tokenlar))
+    if sebep:
+        return sebep
     for i, t in enumerate(tokenlar):
         taban = os.path.basename(t)
         kalan = tokenlar[i + 1:]
-        sebep: Optional[str] = None
+        sebep = None
         if taban == "git":
             sebep = _git_ihlali(kalan)
         elif taban == "rm":
             sebep = _rm_ihlali(kalan)
-        elif taban in KABUK_ISIMLERI and "-c" in kalan:
-            k = kalan.index("-c")
+        elif taban == "xargs" and any(os.path.basename(x) in YIKICI_KOMUTLAR for x in kalan):
+            sebep = "xargs ile yıkıcı ya da kabuk komutu çalıştırılamaz"
+        elif taban == "find" and any(x in FIND_YIKICI_BAYRAKLAR for x in kalan):
+            sebep = "find -delete/-exec yasak"
+        elif taban in KABUK_ISIMLERI and _kabuk_c_konumu(kalan) is not None:
+            k = _kabuk_c_konumu(kalan)
             if k + 1 < len(kalan):
                 sebep = _genel_ihlal(kalan[k + 1], derinlik + 1)
         if sebep:
             return sebep
+    return None
+
+
+def _yonlendirme_var(komut: str) -> bool:
+    """Tirnak disinda (ve cift tirnak icinde de, komut ikamesi icin) dosya yonlendirmesi
+    (>, >>, >|, &>) varsa True. fd kopyalama (2>&1, >&2) yonlendirme sayilmaz.
+    Tek tirnak icerigi literaldir."""
+    tek = cift = False
+    i = 0
+    while i < len(komut):
+        c = komut[i]
+        if c == "\\" and not tek:
+            i += 2
+            continue
+        if tek:
+            if c == "'":
+                tek = False
+        elif c == "'" and not cift:
+            tek = True
+        elif c == '"':
+            cift = not cift
+        elif c == ">":
+            if komut[i + 1:i + 2] == "&" and komut[i + 2:i + 3] and (
+                komut[i + 2].isdigit() or komut[i + 2] == "-"
+            ):
+                i += 3
+                continue
+            return True
+        i += 1
+    return False
+
+
+def _yazma_gostergesi(komut: str) -> Optional[str]:
+    """Komutun dosya yazabilecegini gosteren ilk isaret; yoksa None."""
+    if _yonlendirme_var(komut):
+        return "dosya yönlendirmesi (>)"
+    for parca in komut_parcala(komut):
+        tokenlar = komut_tokenlari(_tokenlar(parca))
+        if not tokenlar:
+            continue
+        taban = os.path.basename(tokenlar[0])
+        kalan = tokenlar[1:]
+        if taban in YAZMA_KOMUTLARI:
+            return taban
+        if taban in ("sed", "perl") and any(
+            t == "--in-place" or (t.startswith("-") and not t.startswith("--") and "i" in t[1:])
+            for t in kalan
+        ):
+            return f"{taban} -i (yerinde düzenleme)"
+        if taban == "git":
+            k = _git_altkomut(kalan)
+            if k is not None and kalan[k] in GIT_YAZMA_ALTKOMUTLARI:
+                return f"git {kalan[k]}"
+    return None
+
+
+def _dinamik_ihlali(komut: str) -> Optional[str]:
+    """Degisken ya da komut ikamesi yikici bir komutla birlikteyse, ya da ANSI-C dizgi varsa engel."""
+    if ANSI_C_DIZGI.search(komut):
+        return "ANSI-C dizgi kaçışı yasak (gizli komut kurmaya yarar)"
+    if DINAMIK_DESENI.search(komut) and any(isim in komut for isim in YIKICI_KOMUTLAR):
+        return "değişken ya da komut ikamesi yıkıcı komutla birlikte yasak"
     return None
 
 
@@ -333,9 +477,18 @@ def _bash_kontrol(girdi: Dict, kontrat: Optional[Kontrat]) -> None:
     komut = girdi.get("command")
     if not isinstance(komut, str):
         raise KancaHatasi("Bash: 'command' alani eksik ya da metin degil")
-    sebep = _genel_ihlal(komut)
+    sebep = _dinamik_ihlali(komut) or _genel_ihlal(komut)
     if sebep:
         raise Engel(sebep)
+    gosterge = _yazma_gostergesi(komut)
+    if gosterge:
+        if kontrat is not None:
+            raise Engel(
+                f"sözleşmede Bash ile dosya yazma yok ({gosterge}); "
+                "yazma Edit/Write ile ve 'write' listesiyle yapılır"
+            )
+        if any(isaret in komut for isaret in KOD_ISARETLERI):
+            raise Engel(f"lider Bash ile kod ya da kanca yapılandırmasına yazamaz ({gosterge})")
     if kontrat is None:
         return
     for rx in kontrat.deny:

@@ -20,8 +20,7 @@
     "git diff",
     "git log",
     "git add",
-    "git commit",
-    "echo"
+    "git commit"
   ],
   "deny": [
     "\\bsession\\.md$"
