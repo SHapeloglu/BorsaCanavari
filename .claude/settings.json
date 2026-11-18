@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(docker:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(rm -rf:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)"
+    ]
+  }
+}
