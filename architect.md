@@ -1,6 +1,6 @@
 # architect.md — BIST Tahmin Laboratuvarı: mimari
 
-Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-11.
+Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-14.
 
 ## Bileşenler
 
@@ -38,7 +38,7 @@ Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nas
 3. **Bayatlık:** son bar beklenen işlem gününe eşit değilse tahmin yazılmaz (çıkış 3).
 4. **Çözüm:** vadesi gelen tahminler `ticker/XU100` barlarıyla çözülür; bölünme tutarsızlığı ya da >%15 sıçrama varsa yazılmaz.
 5. **Tahmin:** baseline'lar (ve champion/challenger varsa modeller) yazılır; yazım penceresi ertesi seans açılışına kadardır (`LateWrite`).
-6. **İzleme:** drift alarmı devre kesiciyi açar (model üretimini durdurur, baseline sürer); bayat veride izleme atlanır.
+6. **İzleme:** drift alarmı ya da göreli düşüş devre kesiciyi açar: durum `system_state`e yazılır, model üretimi bir sonraki çalışmadan itibaren durur (baseline'lar sürer); yalnız `bist breaker reset` ile kapanır. Bayat veride izleme atlanır.
 7. **Kayıt:** her adım `runs.detail`'e yazılır; kilit `pg_advisory_lock` ile.
 
 ## Sunucu topolojisi (Contabo)
