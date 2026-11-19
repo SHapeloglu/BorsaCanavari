@@ -1,0 +1,28 @@
+{
+  "_aciklama": "Gorev sozlesmesi sablonu. Bu dosya bir gorev degildir; gercek sozlesme bu sablonun kopyasi olarak doldurulur ve BIST_TASK_CONTRACT ortam degiskeniyle kancaya verilir. 'read' yalnizca bilgi amaclidir, kanca tarafindan zorlanmaz. 'write' ve 'commands' bos birakilirsa o islem tamamen engellenir (kapali basarisizlik). 'write' globlari proje kokune gore goreli yolda fnmatch ile eslenir; '*' '/' karakterini de kapsar. 'commands' token onekidir: 'python3 -m unittest' ile 'python3 -m unittest x' eslesir, 'python3 -m unittestx' eslesmez. Bash bilesik komutu ; && || | ` $( ayiricilarindan boler ve her parcayi kontrol eder. Komutun basindaki ortam atamalari (PYTHONPATH=...) onek eslesmesinden once atilir. 'deny' ek regex listesidir; Bash komutuna ve yazma yoluna uygulanir. Genel yasaklar (ssh, scp, docker, git push/pull/merge, git reset --hard, rm -rf, .env) sozlesmeden bagimsiz her zaman gecerlidir.",
+  "id": "<gorev-adi>",
+  "base_sha": "<taban-sha>",
+  "read": [
+    "src/**",
+    "tests/**",
+    "PROJE.md",
+    "ORCHESTRATION.md"
+  ],
+  "write": [
+    "src/bist_tahmin/ornek.py",
+    "tests/test_ornek.py"
+  ],
+  "commands": [
+    "python3 -m unittest",
+    "python3 -m py_compile",
+    "nice -n 15 timeout 600 .venv/bin/python -m pytest",
+    "git status",
+    "git diff",
+    "git log",
+    "git add",
+    "git commit"
+  ],
+  "deny": [
+    "\\bsession\\.md$"
+  ]
+}

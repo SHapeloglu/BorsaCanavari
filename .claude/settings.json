@@ -13,5 +13,18 @@
       "Read(./.env.*)",
       "Read(./**/.env)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/scope_guard.py\""
+          }
+        ]
+      }
+    ]
   }
 }
