@@ -136,6 +136,22 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 **Sıradaki adım:** Degisikliklerin commit'i (kullanici onayi) ve sonra dagitim karari.
 
+## 2026-11-19
+**Yapılanlar:**
+- Onaylı birleştirmeler (yerel, push yok): `kapi-v3` (kapsam kapisi, K1 betigi, ORCHESTRATION v3), `proje-duzelt` (PROJE v3.3 tur 2), `md-senkron` (architect, README, backlog, task), `verify-script` (scripts/), `kontrol-katmani` (PreToolUse kapsam kancasi). Sonuç faz-4 HEAD `488932b`.
+- `task.md` ile `md-senkron` çakışması: ana dalın holdout/cron/K1 satırları korundu, 11 ve 12 Kasım satırları "süresi geçti" olarak alındı.
+- `kontrol-katmani`'nin `settings.json` çakışması kontrol-katmani sürümüyle çözüldü; deny listesi ana dalla aynı kaldı.
+- Birleştirilmiş ana ağaçta tam takım: 736 passed, 3 skipped, çıkış 0. Kanca testleri: 68/68 geçti.
+- Temizlik: 5 worktree ve dal silindi (`agent/hizli-test` dahil; zaten HEAD'in atasıydı).
+
+**Kararlar / neden:**
+- Birleştirmeler yerelde tutuldu; push, sunucu salt okunur kontrollerinden (`bist health`, `breaker status`, son `runs` satırı) sonra yapılacak (`CLAUDE.md` birleştirme kuralı).
+- Kanca `git merge`/`push`/`pull`'u her modda engelliyor; birleştirmeler bundan sonra kullanıcı tarafından yapılır.
+
+**Açık sorunlar:** Sunucu imajı ve sağlık cron'u dağıtılmadı (ssh bu oturumda yasak). 11 ve 12 Kasım kontrolleri süresi geçmiş, sonuçları kayıtlı değil. Ana dal push edilmedi.
+
+**Sıradaki adım:** Sunucuda salt okunur kontroller → push kararı; sonra holdout dağıtımı ve sağlık cron'u (kuru çalıştırma önce).
+
 ---
 
 ## Kayıt şablonu
