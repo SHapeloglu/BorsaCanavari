@@ -2,7 +2,7 @@
 
 Bu dosya projenin tek kaynak gerçeğidir (single source of truth). Bu projede çalışan her oturum, kod yazmadan önce bu dosyayı baştan sona okumalı. Bir karar değişirse önce bu dosya güncellenir, sonra kod.
 
-Sürüm: v3.2 (2026-11-13). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
+Sürüm: v3.3 (2026-11-14). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
 
 ---
 
@@ -54,7 +54,7 @@ Sistem bir **ölçüm ve öğrenme laboratuvarıdır**. Kesin fiyat tahmini yapm
 | Depolama | **PostgreSQL 16**: `postgres-ortak` içinde ayrı `bist_tahmin` veritabanı (*varsayılan, kullanıcı onayı bekliyor, Bölüm 17*) | Append-only kuralı veritabanında zorlanır (rol yetkisi + tetikleyici); gece yedeği hazır; Power BI doğrudan bağlanır. |
 | Yerel geliştirme/test | Geçici Postgres konteyneri (docker) | Tetikleyici ve yetki testleri SQLite'ta aynı sonucu vermez. |
 | Çalıştırma | Docker Compose + host cron, sürekli çalışan servis yok | Sunucudaki diğer işlerin deseniyle aynı; boşta RAM kullanmaz. |
-| Zaman dilimi | Uygulama ve cron **Europe/Istanbul** (sunucu Europe/Berlin) | Berlin DST'si İstanbul saatini kaydırır. |
+| Zaman dilimi | Uygulama Europe/Istanbul; sunucu cron'u Europe/Berlin saatiyle çalışır, `ONLY_IST_HOUR` ile İstanbul saati korunur (Bölüm 19). | Berlin DST'si İstanbul saatini kaydırır. |
 | Evren | BIST 30, **tarihli üyelik tablosuyla** | Çeyreklik değişiklikler; hayatta kalma yanlılığını önler. |
 | Tahmin ufku | 5 işlem günü (XU100 takvimine göre sayılır) | Gürültü ve maliyet dengesi |
 | Çıktı | `prob_up` (0..1, [0,01; 0,99] aralığına kırpılır) ve `score` (günlük sıralama skoru) | Kesin fiyat yerine yön olasılığı ve göreli sıralama |
@@ -69,7 +69,7 @@ Sistem bir **ölçüm ve öğrenme laboratuvarıdır**. Kesin fiyat tahmini yapm
 ## 4. Veri kaynakları ve bilinen kısıtlar
 
 **borsapy** (0.11.0 ile 2026-11-08'de Contabo sunucusundan test edildi)
-- `bp.Ticker("THYAO").history(period="5y")` günlük OHLCV verir (`period="5y"` ≈ 1825 işlem günü, ~7 yıl). `bp.Index("XU100").history(...)` endeks verir.
+- `bp.Ticker("THYAO").history(period="5y")` günlük OHLCV verir (`period="5y"` yaklaşık 1260 işlem günü, ~5 yıl). `bp.Index("XU100").history(...)` endeks verir.
 - `bp.Index("XU030").component_symbols` güncel BIST 30 bileşenlerini verir. 2026-11-08'de 30 hisse; 4. çeyrek değişikliğiyle uyumlu (TRMET dahil, DSTKF yok). **KAP duyurusuyla çapraz kontrol edilir.**
 - `history()` varsayılan çıktısı bölünme/bedelsiz düzeltmelidir (7 yılda −%35'ten büyük günlük düşüş yok), temettü düzeltmesi yoktur. Parametreler: `period, interval, start, end, actions, adjust=True, auto_adjust=False`.
 - **Ham fiyat doğrulandı (Faz 1, 2026-11-08):** `adjust=False`, düzeltmeyi İş Yatırım `splits` tablosundaki bedelsiz oranlarıyla geri alarak ham fiyat verir. Örnekler: BIMAS 2026-05-14 (%100 bedelsiz) ham 813,00 → 414,00 (−%49,1), düzeltmeli 406,50 → 414,00 (+%1,85); FROTO 2025-05-07 (%900) ham −%90,1, düzeltmeli −%0,57. 30 hissenin tüm geçmişinde bölünme günlerinde ham seride sıçrama var, düzeltmelide yok. Bedelli sermaye artırımları (`RightsIssue`) düzeltmeye girmiyor.
@@ -230,8 +230,11 @@ CREATE TABLE runs (
 
 ```
 bist-tahmin/
-├── PROJE.md                  # bu dosya
+├── PROJE.md                  # bu dosya (tasarım tek kaynağı)
 ├── README.md                 # kısa kurulum ve kullanım
+├── CLAUDE.md                 # çalışma kuralları (oturum başı okunur)
+├── ORCHESTRATION.md          # çok ajanlı çalışma kuralları
+├── architect.md, task.md, backlog.md, session.md   # mimari, sıradaki iş, geri log (çalışma belgeleri)
 ├── pyproject.toml
 ├── Dockerfile
 ├── docker-compose.yml        # üretim (ortak-db ağına bağlı)
@@ -239,17 +242,24 @@ bist-tahmin/
 ├── .env.example              # EVDS_KEY=, DATABASE_URL=  (gerçek değerler commit edilmez)
 ├── config/
 │   └── default.yaml          # evren, ufuk, maliyet, eşikler
-├── data/                     # .gitignore'da (yedek çıktıları vb.)
-├── logs/                     # .gitignore'da
+├── deploy/                   # sunucu cron betikleri: bist-tahmin.cron, cron_run.sh, cron_weekly.sh, cron_health.sh
+├── reference/bist30/        # BIST 30 dönemsel üyelik kaynakları ve membership_history.csv
+├── tools/                    # build_membership_history.py, dev_db.py
+├── data/                     # .gitignore'da (yedek çıktıları vb.; repoda yok, çalışma zamanında oluşur)
+├── logs/                     # .gitignore'da (repoda yok, çalışma zamanında oluşur)
 ├── src/bist_tahmin/
 │   ├── __init__.py
+│   ├── cli.py                # komut satırı girişi
 │   ├── config.py             # yaml okuma, doğrulama
 │   ├── db.py                 # roller, veritabanı, migration (init); advisory lock (Faz 2)
-│   ├── sql/                  # migration dosyaları: 001_schema, 002_guard, 003_grants, 004_open_adj, 005_ledger_hardening (pakete dahil)
 │   ├── calendar.py           # işlem günü takvimi, ufuk sayımı
+│   ├── jobs.py               # iş takibi: runs tablosu + advisory lock (Faz 2)
+│   ├── pipeline.py           # günlük akış (run-daily): evren -> indir -> çöz -> tahmin -> izleme
+│   ├── sql/                  # migration dosyaları: 001_schema, 002_guard, 003_grants, 004_open_adj, 005_ledger_hardening, 006_system_state, 007_champion_guard (pakete dahil)
 │   ├── data/
 │   │   ├── source.py         # veri kaynağı soyutlaması (borsapy/yfinance)
 │   │   ├── fetch.py          # indirme
+│   │   ├── store.py          # bist_app yetkileriyle idempotent upsert'ler
 │   │   ├── universe.py       # XU030 bileşenleri, tarihli üyelik
 │   │   └── quality.py        # veri kalite kontrolleri
 │   ├── features/
@@ -257,33 +267,77 @@ bist-tahmin/
 │   ├── baselines/
 │   │   └── rules.py          # hep-yukarı, dün-tekrar, rastgele, MA, geçmiş-oran
 │   ├── models/
+│   │   ├── logreg.py         # lojistik regresyon: JSON-only parametreler, saf numpy tahmin
 │   │   ├── train.py          # walk-forward eğitim (purge'lu)
-│   │   └── registry.py       # champion/challenger yönetimi
+│   │   ├── registry.py       # champion/challenger yönetimi
+│   │   └── promote.py        # terfi kuralı (5 koşul); maliyet kapısı
+│   ├── monitor/
+│   │   ├── state.py          # kalıcı sistem durumu (system_state; migration 006)
+│   │   ├── drift.py          # rolling Brier farkı ve drift alarmı
+│   │   ├── breaker.py        # devre kesici (göreli düşüş; durum system_state'te)
+│   │   └── health.py         # `bist health` sağlık kontrolü
 │   ├── backtest/
-│   │   └── lab.py            # tarihsel walk-forward deney laboratuvarı
+│   │   ├── splits.py         # genişleyen pencere + purge bölmeleri
+│   │   ├── guard.py          # sınama kümesi kilidi (holdout)
+│   │   ├── registry.py       # experiments: deney kaydı (deneme sayısı)
+│   │   ├── dataset.py        # tarihli üyelikle özellik + etiket veri seti
+│   │   ├── lab.py            # tarihsel walk-forward deney laboratuvarı
+│   │   └── runner.py         # deney orkestrasyonu (dataset -> walk-forward -> baseline -> experiments)
 │   ├── predict/
-│   │   └── daily.py          # günlük tahmin üretimi ve kayıt
+│   │   ├── daily.py          # günlük tahmin üretimi ve kayıt
+│   │   └── ledger.py         # idempotent tahmin defteri yazıcısı
 │   ├── resolve/
 │   │   └── resolver.py       # vadesi gelen tahminleri çözme
-│   ├── evaluate/
-│   │   ├── metrics.py        # brier, log loss, kalibrasyon, IC
-│   │   ├── bootstrap.py      # tarihe göre blok bootstrap, eşleştirilmiş fark
-│   │   ├── portfolio.py      # kohort simülasyonu, benchmark
-│   │   ├── costs.py          # komisyon ve spread duyarlılık tablosu
-│   │   └── report.py         # haftalık rapor
-│   └── cli.py                # komut satırı girişi
+│   └── evaluate/
+│       ├── metrics.py        # brier, log loss, kalibrasyon, IC
+│       ├── bootstrap.py      # tarihe göre blok bootstrap, eşleştirilmiş fark
+│       ├── portfolio.py      # kohort simülasyonu, benchmark
+│       ├── costs.py          # komisyon ve spread duyarlılık tablosu
+│       ├── report.py         # haftalık rapor
+│       └── report_portfolio.py  # rapor için kohort portföy bölümü
 └── tests/
-    ├── conftest.py           # gerçek Postgres: BIST_TEST_ADMIN_URL ya da gömülü pgserver
-    ├── test_config.py        # (Faz 0)
-    ├── test_init.py          # (Faz 0)
-    ├── test_append_only.py   # (Faz 0)
-    ├── test_leakage.py
-    ├── test_purge.py
-    ├── test_resolver.py
-    ├── test_metrics.py
+    ├── conftest.py               # gerçek Postgres: BIST_TEST_ADMIN_URL ya da gömülü pgserver
+    ├── test_append_only.py       # (Faz 0; gerçek Postgres)
+    ├── test_backtest_run.py
+    ├── test_baselines.py
     ├── test_bootstrap.py
+    ├── test_calendar.py
+    ├── test_calibration.py
+    ├── test_cli_models.py
+    ├── test_config.py            # (Faz 0)
+    ├── test_costs.py
+    ├── test_daily.py
+    ├── test_dataset.py
+    ├── test_experiments.py
+    ├── test_features.py
+    ├── test_fetch.py
+    ├── test_fetch_quality.py
+    ├── test_health.py
+    ├── test_holdout.py
+    ├── test_init.py              # (Faz 0)
+    ├── test_lab.py
+    ├── test_leakage.py
+    ├── test_ledger.py
+    ├── test_membership_history.py
+    ├── test_metrics.py
+    ├── test_migration_007.py
+    ├── test_models_logreg.py
+    ├── test_models_registry.py
+    ├── test_models_train.py
+    ├── test_monitor.py
+    ├── test_open_adj.py
     ├── test_portfolio.py
-    └── test_quality.py
+    ├── test_promote.py
+    ├── test_quality.py
+    ├── test_report.py
+    ├── test_report_portfolio.py
+    ├── test_resolver.py
+    ├── test_resolver_db.py
+    ├── test_source.py
+    ├── test_splits.py            # walk-forward purge kuralı (Bölüm 13'teki eski ad test_purge.py; purge testi bu dosyada)
+    ├── test_store.py
+    ├── test_store_read.py
+    └── test_universe.py
 ```
 
 ## 8. Yapılandırma (config/default.yaml)
@@ -405,14 +459,14 @@ Haftalık:
 2. Yeniden eğitim tetiklenmişse challenger eğit (`models train`, purge'lu)
 3. Terfi kuralını uygula (`models promote-check`)
 
-Devre kesici: Simüle edilmiş stratejinin eşit ağırlıklı BIST 30'a göre göreli düşüşü `circuit_breaker.max_relative_drawdown` eşiğini aşarsa ya da drift alarmı sürerse tahmin üretimi durur ve kullanıcıya rapor olarak bildirilir. Otomatik olarak yeniden başlamaz. (Mutlak düşüş kullanılmaz: piyasa düşerken model bozulmamış olabilir.)
+Devre kesici: Simüle edilmiş stratejinin eşit ağırlıklı BIST 30'a göre göreli düşüşü `circuit_breaker.max_relative_drawdown` eşiğini aşarsa ya da drift alarmı verirse (`drift.brier_over_base_rate_alert` eşiğinin ilk aşımı; kalıcı alarm koşulu aranmaz) **model** üretimi durur ve kullanıcıya rapor olarak bildirilir. Durdurulan yalnızca champion/challenger satırlarıdır; baseline'lar yazılmaya devam eder. Durum `system_state`e yazılır; tetikleyen çalışmada model satırları zaten yazılmış olabilir, durdurma bir sonraki çalışmadan itibaren geçerlidir. Veri bayatsa drift ve devre kesici kararı verilmez (atlanır). Otomatik olarak yeniden başlamaz; yalnızca `bist breaker reset --reason ...` ile kapanır (gerekçe zorunlu). (Mutlak düşüş kullanılmaz: piyasa düşerken model bozulmamış olabilir.)
 
 Devre kesici maliyet varsayımı: izleme kararı, terfi kapısıyla aynı tek yön maliyet kuralını kullanır (`models.promote.resolve_cost`). `costs.commission_bps` ile `costs.spread_bps` ikisi birlikte doluysa toplamları alınır; aksi halde 10 bps varsayılanı uygulanır ve bu değer DOĞRULANMADI'dır. Devre kesici her değerlendirme çıktısında kullanılan maliyeti ve kaynağını yazar: `maliyet <bps> bps (yapilandirilmis)` ya da `maliyet 10 bps (varsayilan tahmini, DOGRULANMADI)`. Devre kesici izleme amaçlıdır: maliyet doğrulanmamış olsa da hesabı 10 bps ile yapar ve fail-closed davranmaz; hesap değişmez. Terfi kapısı ise aynı durumda koşul 5'i sağlanmış saymaz ve terfi onaylamaz (Bölüm 11, karar kuralı 5). İki kararın bu farkı bilerek bırakılmıştır.
 
 ## 13. Testler (zorunlu)
 
 - `test_leakage.py`: Özellik üretimine `made_at` sonrası veri verildiğinde çıktı değişmemeli ya da hata vermeli. Bir tahminin özellikleri yalnızca geçmiş satırlardan türetildiği doğrulanır. Bilinçli olarak geleceğe bakan bir özellik (ör. ileri getiri) kullanan sahte model, sızıntı dedektörü tarafından yakalanır.
-- `test_purge.py`: Walk-forward bölmede eğitim satırlarının etiket penceresi test gününü kesmez; eğitim son günü ≤ `t − purge_days`.
+- `test_splits.py::test_purge_label_window_never_crosses_first_test_day` (eski ad `test_purge.py`; dosya yok, purge kontrolü bu test içinde): Walk-forward bölmede eğitim satırlarının etiket penceresi test gününü kesmez; eğitim son günü ≤ `t − purge_days`.
 - `test_append_only.py` (gerçek Postgres'te): `bist_app` rolüyle `prob_up`/`feature_hash`/`features_json` güncellenemez, satır silinemez, TRUNCATE çalışmaz, çözüm alanları yalnızca bir kez yazılabilir.
 - `test_resolver.py`: Vade gelmeden çözüm yapılamaz; çözüm bir kez yazılır; `realized_ret` ve `tradable_ret` bilinen örnekte doğru; ufuk, XU100 takvimine göre işlem günü sayar (tatil atlanır).
 - `test_metrics.py`: Brier skoru bilinen değerlerle eşleşir (sabit 0.5 → 0.25); IC bilinen örnekte doğru.
@@ -510,7 +564,7 @@ Her faz, kabul kriterleri sağlanmadan kapatılmaz.
 - Deneyler: etiket (mutlak/göreli), özellik grupları, düzenlileştirme, eğitim penceresi
 - Kabul: Baseline'lar ve lojistik regresyon tarihsel olarak çalışıyor; kasıtlı sızıntılı özellik dedektör tarafından yakalanıyor; sınama kümesi varsayılan olarak kilitli
 
-**Faz 4: ML modeli ve öğrenme döngüsü**
+**Faz 4: ML modeli ve öğrenme döngüsü** — *yerelde tamam (2026-11-13'e kadar); canlı terfi yok, champion yok, bilerek*
 - Challenger'ın canlı gölge modda yazması, champion/challenger, terfi kuralı, drift izleme, devre kesici
 - Kabul: Challenger eğitimi ve terfi kontrolü uçtan uca çalışıyor; terfi kuralı bilinçli olarak kötü bir challenger ile test edilmiş ve reddetmiş
 
@@ -552,7 +606,7 @@ Bu sorular cevaplanana kadar ilgili değerler varsayılan olarak bırakılır ve
 - **Veri sağlayıcı değişikliği:** borsapy veya TradingView erişimi değişebilir. Veri kaynağı soyutlama katmanı arkasında tutulur. TradingView WebSocket erişimi resmi bir ürün değildir.
 - **Deneme şişmesi:** Backtest laboratuvarı çok deneme üretir. Sınama kümesi, çoklu deneme düzeltmesi ve canlı gölge çalıştırma bunun içindir.
 - **Paylaşımlı altyapı:** `postgres-ortak` 12 veritabanına hizmet eder. Bu projenin yükü çok küçük olsa da `statement_timeout` ve bağlantı sınırı konur.
-- **Disk:** Sunucu diskinin %88'i dolu (2026-11-08). Proje veri hacmi küçüktür; yine de disk durumu izlenir.
+- **Disk:** 2026-11-08'de %88 ölçüldü; güncel değer sunucuda ölçülmeli. Proje veri hacmi küçüktür; yine de disk durumu izlenir.
 - **Lisans:** borsapy kullanım koşulları veriyi ticari amaçla kullanmayı yasaklar; Borsa İstanbul veri dağıtımını lisansa bağlar. Bu proje kişisel ve eğitim amaçlıdır.
 - **Kullanıcı yanılgısı:** Sistemin "tahmin ettiği" izlenimi yaratılabilir. Raporlar her zaman belirsizliği, örneklem sayısını ve farklı gün sayısını gösterir.
 
@@ -565,7 +619,7 @@ Durum tespiti 2026-11-08'de SSH ile yapıldı (yalnızca okuma). Dağıtımdan �
 - **Yedek:** `postgres-ortak` için gece `pg_dumpall` (14 gün) ve 04:30 restic mevcut; yeni veritabanı otomatik kapsanır. Dağıtımda ilk yedeğin yeni veritabanını içerdiği doğrulanır.
 - **Konum:** `/opt/bist-tahmin/` (Compose, `.env` 600, `deploy/` cron betikleri, `logs/`, `reports/`; kod `git archive` ile aktarıldı, sunucuda git deposu yok). Sürekli çalışan servis yok; cron `docker compose run --rm` ile tetikler. İmaj `bist-tahmin:latest` (1,13 GB, sunucuda `docker build`). **Güncelleme:** `git archive HEAD | ssh contabo 'tar -x -C /opt/bist-tahmin'` sonra `docker build -t bist-tahmin:latest .`; `.env` ezilmez.
 - **Kurulum durumu (2026-11-08):** `bist_tahmin` DB ve roller kuruldu, ilk veri yüklendi (Bölüm 15, Faz 1). Yönetici (`postgres`) parolası yalnızca `bist init` sırasında, geçici SSH tüneliyle (`127.0.0.1:5434`) kullanıldı; konteynerin `.env`'inde yoktur.
-- **Cron:** `CRON_TZ=Europe/Istanbul` ile günlük 19:00 (Ubuntu 24.04 cron'unda `CRON_TZ` desteği kurulumda doğrulanır; yoksa betik içinde İstanbul saati kontrol edilir) ve haftalık rapor. Çıktılar `logs/` ve `runs` tablosuna.
+- **Cron:** `/etc/cron.d/bist-tahmin` (depoda `deploy/bist-tahmin.cron`). `CRON_TZ` bu sunucuda çalışmaz (2026-11-08'de denendi, tetiklenmedi); sunucu Europe/Berlin'de, satırlar Berlin saatiyle iki olası saate konur ve `deploy/cron_run.sh` `ONLY_IST_HOUR` ile gerçek İstanbul saatini kontrol eder. Hafta içi 19:00 İstanbul `run-daily`, 19:45 yeniden deneme (`RETRY=1`), cumartesi 10:00 haftalık rapor. Depoda hazır olan 20:30 sağlık kontrolünün sunucuda kurulu olup olmadığı doğrulanmadı. Çıktılar `logs/` ve `runs` tablosuna.
 - **Kaynak sınırları:** Konteynere CPU/RAM sınırı konur (`--cpus`, `mem_limit`), `nice` ile çalışır. Sunucu yükü ~3,5 / 6 çekirdek.
 - **Dikkat:** Sunucudaki diğer hizmetlere (nginx, diğer veritabanları, diğer konteynerler) dokunulmaz. Erişim sorunları (SSH zaman aşımı 2026-11-08) dağıtım öncesi kontrol edilir; art arda bağlantı denenmez.
 - **İş Yatırım** bu sunucudan açılmaz (Bölüm 4).
@@ -593,6 +647,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v3.3 (2026-11-14): Olgusal düzeltmeler (yalnız doküman; tasarım kararı değişmedi).** (1) Bölüm 4: `period="5y"` yaklaşık 1260 işlem günü, ~5 yıl (önceki 1825 değeri takvim gününe aitti). (2) Bölüm 7: proje yapısı gerçek koda göre güncellendi (monitor/, pipeline.py, jobs.py, backtest/ alt modülleri, predict/ledger.py, models/logreg.py ve promote.py, deploy/, reference/, tools/, tests listesi); migration listesi 001–007 (006_system_state, 007_champion_guard). (3) Bölüm 13: `test_purge.py` repoda yok; purge kuralı `tests/test_splits.py::test_purge_label_window_never_crosses_first_test_day` ile sınanıyor, madde ve Bölüm 7 ağacı buna göre düzeltildi. (4) Bölüm 12 devre kesici tetik metni koda hizalandı: model satırları ilk alarmda durur, baseline sürer (kod davranışı değişmedi; önceki "drift alarmı sürerse" metni yanlıştı; kaynak `pipeline._monitor`, `breaker.py`). Tasarım kararı değil, belge düzeltmesi. Devre kesici maliyet paragrafı (21bf48c) bu sürümde Bölüm 12'de yer alır. (5) Bölüm 15: Faz 3.5 maliyet tutarsızlığının 10 bps tek yön düzeltmesi (3763105) işlendi; Faz 4 başlığına durum etiketi eklendi. (6) Bölüm 19: cron açıklaması Bölüm 15 Faz 2 ile hizalandı (`CRON_TZ` bu sunucuda çalışmaz; Berlin saatiyle iki olası saat ve `ONLY_IST_HOUR`). (7) Bölüm 18: disk değeri tarihli yazıldı (2026-11-08 %88; güncel değer sunucuda ölçülmeli). (8) Bölüm 3 zaman dilimi satırı: "cron Europe/Istanbul" ifadesi Bölüm 15 ve 19 ile çelişiyordu; uygulama Europe/Istanbul, cron Berlin saatiyle `ONLY_IST_HOUR` korumasıyla çalışır olarak düzeltildi. Çelişkinin giderilmesi, tasarım kararı değil.
 - **v3.2 (2026-11-13): Maliyet kapısı tur 2.** Bölüm 11 karar kuralı 5'e maliyet fail-closed maddesi eklendi (maliyet doğrulanmadan koşul 5 sağlanmış sayılmaz). CLI testleri maliyeti açıkça verilmiş test yapılandırmasıyla geçer; varsayılan config null kalır ve maliyetsiz durumda rc 2 sınanır. `promote.py` içindeki 10 bps atfı Bölüm 15 Faz 3.5 tablosuna düzeltildi (yalnız yorum).
 - **v3.1 (2026-11-11): Durum düzeltmesi ve doküman seti.** (1) Holdout kanıt kontrolü (`7b29738`): terfi kanıtı artık `experiment.use_holdout == True`, `holdout_start` = gerçek yapılandırma, `train_max_date < holdout_start` ve spec eşleşmesi ile doğrulanır (fail-closed); yerelde 726 test yeşil, **sunucu imajında henüz yok** (terfi öncesi zorunlu). (2) Sağlık kontrolü cron'u (`deploy/cron_health.sh`, 20:30 satırı) depoda hazır, **sunucuda eklenmedi**. (3) Proje dokümanları oluşturuldu/güncellendi: `CLAUDE.md`, `architect.md`, `task.md`, `backlog.md`, `session.md`, `README.md`. Depoda `main` dalı yok; çalışma dalı `faz-4-yasam-dongusu`.
 - **v3.0 (2026-11-11): Canlı dağıtım.** Sunucuya (Contabo) uygulananlar: (1) splits önbelleği (`cab326c`) ve Faz 4 kodunun tamamı (`HEAD`, `bist-tahmin:latest`; önceki imaj `bist-tahmin:prev-20261110`); (2) migration 006 (system_state) ve 007 (champion koruması) — idempotent, diğer veritabanlarına dokunulmadı; (3) geçmiş BIST 30 üyeliği (`universe load-history`, 58 aralık; açık üye 30; 9–11 Kasım ve geçmiş tarihlerde evren 30 hisse, daily fetch kümesi değişmedi); (4) 17 eski üyenin fiyat geçmişi 2019-06'dan (47 hisse, takvim 2019–2026, 1.859 işlem günü, hata/dışlama yok). Yeni imajla kuru `run-daily`: çıkış 0; `breaker status` kapalı; `models list` boş. Tahmin defteri: 300 satır (9 ve 10 Kasım), değişmedi. 10 Kasım 19:00 çalıştırması: 150 tahmin, çıkış 0.
