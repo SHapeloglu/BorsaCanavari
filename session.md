@@ -148,9 +148,18 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 - Birleştirmeler yerelde tutuldu; push, sunucu salt okunur kontrollerinden (`bist health`, `breaker status`, son `runs` satırı) sonra yapılacak (`CLAUDE.md` birleştirme kuralı).
 - Kanca `git merge`/`push`/`pull`'u her modda engelliyor; birleştirmeler bundan sonra kullanıcı tarafından yapılır.
 
-**Açık sorunlar:** Sunucu imajı ve sağlık cron'u dağıtılmadı (ssh bu oturumda yasak). 11 ve 12 Kasım kontrolleri süresi geçmiş, sonuçları kayıtlı değil. Ana dal push edilmedi.
+**Sunucu (kullanıcı onayıyla; ssh yasağı yalnızca bu işler için geçici kaldırılıp geri yüklendi):**
+- Salt okunur kontroller (17:29 İstanbul): `bist health` SAGLIKLI (son günlük akış 18 Kasım 19:00 başarılı, veri güncel, takılı iş yok); `bist breaker status` kapalı.
+- Push: `origin/faz-4-yasam-dongusu` `9fc29a0..f62cce0` (23 commit), `git push` yasağı geçici kaldırılıp geri yüklendi.
+- Sağlık cron'u: `/etc/cron.d/bist-tahmin` repo sürümüyle değiştirildi (`cmp` temiz). Önceki dosya `/root/bist-tahmin.cron.bak-20261119`. 20:30 `cron_health.sh` satırı artık etkin.
+- Holdout imajı: `7b29738` ağacından (`git archive`, çalışma ağacı dahil değil) `/opt/bist-tahmin-holdout-7b29738` altında derlendi → `bist-tahmin:holdout-7b29738` (`d6036647f670`). Önceki `latest` (`ce76edae4cad`, 11 Kasım) `bist-tahmin:prev-20261119` olarak etiketlendi; `latest` artık `d6036647f670`. Derleme 15:37 Berlin'de (günlük çalıştırmadan önce) bitti.
+- `run-daily --dry-run` yeni imajla: çıkış 0, yazma yok; 18 Kasım için 150 kayıt zaten vardı, aktif model yok.
+- Sonrası `health` SAGLIKLI, `breaker status` kapalı (15:41 Berlin).
+- Build logu `/root/build-holdout-7b29738.log`, dry-run logu `/root/dryrun-holdout-7b29738.log`.
 
-**Sıradaki adım:** Sunucuda salt okunur kontroller → push kararı; sonra holdout dağıtımı ve sağlık cron'u (kuru çalıştırma önce).
+**Açık sorunlar:** 11 ve 12 Kasım kontrolleri süresi geçmiş; sonuçları kayıtlı değil. 19 Kasım 19:00 çalıştırmasının (ilk günlük koşu yeni imajla) sonucu henüz yok; bakılmalı.
+
+**Sıradaki adım:** 19 Kasım 19:00 ve 19:45 koşusunun `runs` sonucu ve 20:30 sağlık kontrolü; sonra bu kaydı kapatma.
 
 ---
 
