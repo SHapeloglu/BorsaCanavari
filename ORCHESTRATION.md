@@ -2,7 +2,7 @@
 
 Bu dosya, bu depoda birden fazla ajanın birlikte çalıştığı işlerin kurallarıdır. `CLAUDE.md` genel kuralları, `PROJE.md` tasarımı tanımlar; bu dosya **ajanların nasıl koordine olduğunu** tanımlar. Çelişkide `PROJE.md` ve `CLAUDE.md` kazanır.
 
-Sürüm: 2 (2026-11-12). Sürüm 1'deki "izinler araç düzeyinde zorlanmıyor" notu bu sürümle kaldırıldı; zorlama artık alt ajan tanımları, proje izin ayarları ve mekanik birleştirme kapısıyla yapılır (bkz. §3).
+Sürüm: 3 (2026-11-14). Sürüm 2'de "izinler araç düzeyinde zorlanmıyor" notu kaldırılmıştı; zorlama alt ajan tanımları, proje izin ayarları ve mekanik kapılarla yapılır (bkz. §3). Sürüm 3 ile: kapsam kapısı betiğe bağlandı (§3), birleştirme yalnızca insan betiğiyle yapılır (§4), kapsam dışı talep akışı ve izin dosyası şablonu eklendi (§4, §8).
 
 ## 1. Roller
 
@@ -22,7 +22,7 @@ Lider ile uygulayıcı aynı ajan olamaz. Doğrulayıcı, doğrulanan görevi ya
   Taban: görev belirtmediyse `faz-4-yasam-dongusu`'nun o anki SHA'sı. Taban SHA görev metninde açıkça yazılır; herkes aynı SHA'dan başlar.
 - Ana çalışma ağacı (`/home/yeliz/BarsaCanavari`) uygulayıcılar tarafından **yazılmaz**.
 - **Python yolu (zorunlu):** Sanal ortam `bist_tahmin`'i ana ağacın `src/` klasöründen editable yükler. Worktree içinde pytest koşarken her komut `PYTHONPATH=<worktree>/src` ile başlar; aksi halde ana ağacın kodu sınanır. İlk komutta `bist_tahmin.__file__` yolu raporlanır. (Bu kural pilot sırasında gerekçesiyle eklendi.)
-- Görev bitince worktree kalır; birleştirme lider tarafından, insan onayıyla yapılır.
+- Görev bitince worktree kalır; birleştirme yalnızca insanın çalıştırdığı `tools/birlestir_k1.sh` ile yapılır (§4).
 
 ## 3. Zorlama katmanları
 
@@ -30,7 +30,9 @@ Kural metni tek başına yetmez; üç katman birlikte çalışır:
 
 1. **Araç listesi (alt ajan tanımı):** Uygulayıcıda Edit/Write vardır, doğrulayıcıda yoktur. Lider ana oturumdur; "kod yazmaz" kuralı ana oturumun kendi davranışıyla sağlanır, bu yüzden lider kod değişikliğini alt ajana devreder.
 2. **Proje izin ayarları (`.claude/settings.json`, deny):** ssh, scp, docker, `git push|pull|merge`, `git reset --hard`, `rm -rf`, `.env` okuma. Bu tek başına kapsamı çizmez ama sunucu ve ağ işlerini araç düzeyinde engeller.
-3. **Mekanik birleştirme kapısı (lider çalıştırır, §4'te):** `git diff --name-only <taban>..<dal>` çıktısı görevin yazılabilir listesinin içinde değilse dal doğrulayıcıya gitmeden geri çevrilir.
+3. **Kapsam kapısı (mekanik betik, `tools/kapsam_kapisi.sh`):** `tools/kapsam_kapisi.sh <taban-sha> <dal> <izin-dosyasi>` çalıştırılır. `git diff --name-only <taban-sha> <dal>` çıktısındaki her dosya izin dosyasında değilse dal doğrulayıcıya gitmeden geri çevrilir. Betik dosya yazmaz; lider de çalıştırabilir.
+   - **İzin dosyası:** görevin yazılabilir kümesini tanımlayan düz metin dosyası. Her satır bir tam dosya yolu ya da `dizin/` ile biten bir önektir. `#` ile başlayan satırlar ve boş satırlar yok sayılır.
+   - **Çıkış kodları:** `0` hepsi izinli; `1` izin dışı dosya var (her biri listelenir); `2` kullanım ya da ortam hatası (taban ya da dal yok, izin dosyası okunamıyor).
 
 Bu katmanların hiçbiri ajanın komut içeriğini tam denetlemez (bash komutları araç seviyesinde ayrıştırılmaz). Bu yüzden doğrulayıcı kanıtı bağımsız olarak yeniden üretir (§5).
 
@@ -40,11 +42,13 @@ Bu katmanların hiçbiri ajanın komut içeriğini tam denetlemez (bash komutlar
 
 | Koşul | Kim kontrol eder |
 |---|---|
-| Diff yazılabilir listenin içinde (`git diff --name-only`) | Lider, mekanik |
+| Kapsam kapısı: diff izin dosyasının içinde (`tools/kapsam_kapisi.sh`) | Mekanik betik |
 | Yasak komut ya da dosya kullanılmamış (uygulayıcı raporu + doğrulayıcı) | Doğrulayıcı |
 | Hedefli testler ve tam takım çıkış kodu 0 (`echo $?`) | Doğrulayıcı |
 | Doğrulayıcının açık "DOĞRULANDI" dışında bulgusu yok; "KANIT YOK" ve "ÇELİŞİYOR" sıfır | Lider özet yazar, doğrulayıcı raporuna bakar |
 | Lider özeti: değişen dosyalar, neden, test sayıları, açık riskler | Lider |
+
+**K1 birleştirme yalnızca `tools/birlestir_k1.sh` ile yapılır.** Bu betiği yalnızca insan çalıştırır: `K1_ONAY=<dal> tools/birlestir_k1.sh <dal> <izin-dosyasi>`. Betik sırayla şunları denetler: `K1_ONAY` dal adıyla birebir eşleşiyor mu; kapsam kapısı geçiyor mu; ana ağaçta commit edilmemiş değişiklik ile dal arasında dosya kesişimi var mı. Hepsi geçerse `git merge --no-ff` yapar. Push etmez. Lider ve ajanlar `git merge` çalıştırmaz; `.claude/settings.json` içindeki `Bash(git merge:*)` yasağı kalır.
 
 **Döngünün dışında kalanlar (kapı değil, yasak):**
 
@@ -54,6 +58,18 @@ Bu katmanların hiçbiri ajanın komut içeriğini tam denetlemez (bash komutlar
 Ara adımlar (test yazmak, yeniden düzenleme, rapor üretmek, yerel deney) için onay gerekmez.
 
 **Kapsam dışı görülürse:** Uygulayıcı kapsamı kendi başına genişletmez. Durur, lidere önerisini yazar; lider gerekirse insana sorar.
+
+### Kapsam dışı talep
+
+Uygulayıcı izin dışındaki bir dosyaya ihtiyaç duyarsa o dosyayı kendisi değiştirmez. Üç satır yazar:
+
+- **Neden:** dosyanın görev için neden gerektiği.
+- **Dosya:** tam yol.
+- **Risk:** dosya değiştirilmezse ya da değiştirilirse ne olur.
+
+Lider bu üç satırı insana iletir. İnsan tek kelimeyle yanıt verir: `ONAY` ya da `RED`. Onaysız kapsam dışına çıkılmaz. Onaylanırsa izin dosyası güncellenir ve kapsam kapısı yeniden çalıştırılır; reddedilirse dosya dala girmez.
+
+Bu konu açık: CLAUDE.md:35 ile K1 uyumu kullanıcı kararı bekliyor.
 
 ## 5. Doğrulayıcı kuralları
 
@@ -89,7 +105,7 @@ Ara adımlar (test yazmak, yeniden düzenleme, rapor üretmek, yerel deney) içi
 - Taban SHA: <sha>
 - Hedef: <tek cümle, ölçülebilir>
 - Okunabilir: <yollar>
-- Yazılabilir: <en fazla birkaç dosya>
+- İzin dosyası: tools/... ya da görev dalına özel dosya
 - İzinli komutlar: PYTHONPATH'li pytest; git status|diff|log|add|commit (yalnızca kendi dalında)
 - Yasak: §3 deny listesi + bu göreve özel olanlar
 - Kabul: <hedefli testler çıkış 0; tam takım lider/doğrulayıcı tarafından; sayılar>
@@ -106,3 +122,4 @@ Ara adımlar (test yazmak, yeniden düzenleme, rapor üretmek, yerel deney) içi
 - **Geçici disk:** Tam takım `/tmp` (tmpfs) dolunca gömülü Postgres kurtarma moduna girdi. Her tam takım koşusu `TMPDIR` ayarlı olmalı.
 - **Yanlış kod sınandı:** Editable kurulum nedeniyle worktree testleri ana ağacın kodunu import etti. `PYTHONPATH` kuralı bundan doğdu (§2).
 - **Holdout:** Mekanik test gerçek sınama kümesini tüketebilirdi. Holdout'a dokunan her görev, lidere ve insana açıkça belirtilir (`CLAUDE.md`).
+- **Alt ajan türleri oturumda yüklenir (sürüm 3):** `.claude/agents/*.md` tanımları oturum başında yüklenir; oturum yeniden başlatılmadan tür olarak çağrılamaz. Bu oturumda genel ajan ve bu dosyanın kuralları kullanıldı; araç kısıtı zorlanmadı.
