@@ -47,7 +47,7 @@ Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nas
 - Konteyner `.env` (600): yalnızca `DATABASE_URL` (bist_app). Yönetici bağlantısı konteynere verilmez.
 - Cron: `/etc/cron.d/bist-tahmin` (Berlin saatiyle iki olası saat; `ONLY_IST_HOUR` koruması). Sarmalayıcılar `deploy/cron_run.sh`, `deploy/cron_weekly.sh`, `deploy/cron_health.sh` (sağlık cron'u 2026-11-19'dan beri 20:30'da çalışır).
 - Yedek: `postgres-ortak` gecelik `pg_dumpall` (03:50, 04:30) bist_tahmin'i kapsar; geri yükleme testi yapılmadı.
-- Dağıtım: `git archive <dal> | ssh contabo 'tar -x -C /opt/bist-tahmin'`, sonra `docker build -t bist-tahmin:latest .`; önceki imaj `bist-tahmin:prev-*` etiketiyle saklanır. Son dağıtım (2026-11-19): ayrı dizinde `git archive 7b29738` ile derleme (`bist-tahmin:holdout-7b29738`), ardından `latest`'e etiket; önceki imaj `prev-20261119`.
+- Dağıtım: `git archive <dal> | ssh contabo 'tar -x -C /opt/bist-tahmin'`, sonra `docker build -t bist-tahmin:latest .`; önceki imaj `bist-tahmin:prev-*` etiketiyle saklanır. Son dağıtım (2026-11-24): `git archive b549f0d` ile ayrı dizinde derleme (`bist-tahmin:head-b549f0d`, `b3b284670391`), ardından `latest`'e etiket; önceki imaj `prev-20261124` (holdout). Önceki dağıtım (2026-11-19): `holdout-7b29738`, `prev-20261119`.
 
 ## Güvenlik katmanları (veritabanında, uygulama kodunda değil)
 - Tahmin defteri: `predictions` için `bist_app` yalnızca INSERT/SELECT ve çözüm sütunlarında UPDATE; DELETE/TRUNCATE yok; tetikleyici (002, 005) tahmin alanlarını ve çift çözümü engeller; `recorded_at` DB saatine kilitli.

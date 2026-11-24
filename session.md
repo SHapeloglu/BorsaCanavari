@@ -4,6 +4,14 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-24 — sunucu imajı güncellemesi
+**Yapılanlar:**
+- Kullanıcı onayıyla ("olur") `b549f0d` (runtime kodu `5665b38` ile aynı) ayrı dizinde derlendi: `/opt/bist-tahmin-head-b549f0d` → `bist-tahmin:head-b549f0d` (`b3b284670391`). Derleme arka planda, `setsid nohup` ile; 11 kaynak dosya değişikliğinin işaret kontrolü (`load_resolved`) imajın içinde doğrulandı.
+- Kuru çalıştırma (`run-daily --dry-run`, yeni imaj): çıkış 0, yazma yok; 23 Kasım için 150 zaten vardı. `health` SAGLIKLI, `breaker status` kapalı.
+- Etiketler: önceki `latest` → `prev-20261124` (holdout `d6036647`); `head-b549f0d` → `latest`. Geri dönüş: `holdout-7b29738` → `latest`.
+- Sunucu diski %94 (14 GB boş) — 19 Kasım'daki %85'ten yükseldi. Docker'da geri kazanılabilir ~35 GB görünüyor; silinmedi, başka projelerin imajları olabilir.
+- 19:00 çalıştırması bu imajla yapılacak; sonucu 24 Kasım akşamı kontrol edilmeli.
+
 ## 2026-11-24
 **Yapılanlar:**
 - Salt okunur kontrol (09:55 İstanbul): 19, 20 ve 23 Kasım 19:00 koşuları çıkış 0, her biri 150 tahmin; 19 Kasım 19:45 yeniden deneme gerekmedi; 21–22 Kasım hafta sonu.
