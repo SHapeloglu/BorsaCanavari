@@ -12,12 +12,16 @@ Durum: 2026-11-24. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 - [x] **`resolve` atlamaları (`horizon_unknown`)** (2026-11-24): açıklandı; vadesi henüz dolmamış tahminler, beklenen davranış. Log mesajı iyileştirilebilir.
 - [x] **Sunucu imajını güncel koda al** (2026-11-24, uygulandı): `b549f0d` (runtime kodu `5665b38` ile aynı) `bist-tahmin:head-b549f0d` olarak derlendi; `latest` = `b3b284670391`; önceki `latest` `prev-20261124` (holdout `d6036647`). Kuru çalıştırma çıkış 0, `health` ve `breaker` temiz. Geri dönüş: `holdout-7b29738` etiketini `latest` yap. Eski plan metni: Kapsam: 11 kaynak dosya (`cli`, `fetch`, `jobs`, `promote`, `train`, `breaker`, `drift`, `health`, `pipeline`, `predict/daily`, `predict/ledger`); migration yok, şema değişmiyor. `predict/daily.py` ve `ledger.py` günlük yazma yolunda; kuru çalıştırma zorunlu. Plan: `git archive` ile ayrı dizin → `bist-tahmin:head-<sha>` derleme (arka planda, `< /dev/null`) → kod marker kontrolü → `run-daily --dry-run` → `health` → 18:30 İstanbul öncesinde `latest` etiketi (önceki: `prev-20261124`). Geri dönüş: `holdout-7b29738` etiketini `latest` yap.
 
+- [ ] **Kapsam kancası birleştirme kararı** (`agent/kanca-kapsam-v2`, faz-4 üstünde): Bash uyarıya çevrildi, sınır izin listesinde. Birleştirme ve push kullanıcı kararında. Eski `agent/kanca-dorduncu-tur` (`d3da116`) yerelde, ayrıca bir karar bekliyor.
+- [ ] **Git nesne deposu temizliği**: `.git/objects` içinde boş nesneler var (`git fsck` hataları; ana geçmiş sağlam). Yedek alınıp silme kararı kullanıcıda; silmeden yapılmaz.
+
 ## 🚧 Devam Eden
 
 - _(yok)_ — Faz 4 yerelde tamam ve push edildi; canlı terfi yok, bilerek. 13 Kasım kod değişiklikleri `5665b38` ile commit edildi.
 
 ## ✅ Tamamlanan
 
+- [x] 2026-11-24 — Kapsam kancası: Bash bulguları uyarıya çevrildi, Bash sınırı `.claude/settings.json` izin listesine taşındı (`agent/kanca-kapsam-v2`, faz-4 üstünde; commit: bkz. dal). Kanca testleri 75/75; tam takım bu dalda koşuldu.
 - [x] 2026-11-24 — Günlük akış kontrolü (salt okunur): 19, 20 ve 23 Kasım koşuları çıkış 0, her biri 150 tahmin; `health` SAGLIKLI; devre kesici kapalı; haftalık rapor 21 Kasım üretildi; ALERT yok.
 - [x] 2026-11-19 — faz-4 origin'e push: `9fc29a0..2532893`.
 
