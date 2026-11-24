@@ -35,7 +35,8 @@ Bu liste karar değildir. Bir madde işe dönüşürse `task.md`'ye taşınır; 
 - **Yerel LLM özeti (Ollama):** sunucuda `qwen3:4b`, `bge-m3` var; konteynerden erişim ağ ayarı gerektirir. Yalnızca haftalık yorum için.
 
 ## Operasyon ve araçlar
-- **Sağlık cron'u:** `deploy/` hazır, sunucuya eklenmedi (task.md'de).
+- **Sağlık cron'u:** sunucuya eklendi (2026-11-19; `/etc/cron.d/bist-tahmin`, 20:30 İstanbul).
+- **Resolve atlamaları (`horizon_unknown`):** her günlük koşuda çözücü ~600 kaydı atlıyor (19–23 Kasım; dry-run'da 750). Neden (eksik ufuk bilgisi mi, beklenen bir durum mu) ve tahmin defterine etkisi incelenmeli.
 - **Uyarı kanalı:** `ALERT.txt` (ALERT.txt sunucu yolu; repoda yok, sunucuda doğrulanmalı) ve syslog dışında bildirim yok (e-posta/Slack yok). Karar: rapor yeri (PROJE açık soru 5).
 - **CI:** yok. Tam takım yerelde; birleşik iş akışı için bir CI değerlendirilebilir.
 - **Test süresi:** tam takım 2–10 dk; hızlı alt küme tanımı (`pytest -m fast`).

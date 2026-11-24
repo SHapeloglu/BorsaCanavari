@@ -163,6 +163,24 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-24
+**Yapılanlar:**
+- Salt okunur kontrol (09:55 İstanbul): 19, 20 ve 23 Kasım 19:00 koşuları çıkış 0, her biri 150 tahmin; 19 Kasım 19:45 yeniden deneme gerekmedi; 21–22 Kasım hafta sonu.
+- Sağlık cron'u 20:30'da çalışıyor (23 Kasım 20:30 kaydı); `health` SAGLIKLI; son başarılı akış 23 Kasım 19:00.
+- Haftalık rapor 21 Kasım 10:00: çıkış 0, `reports/rapor-2026-11-21.md`.
+- ALERT.txt yok; devre kesici kapalı.
+- Tüm proje md dosyaları güncellendi: README, architect, task, backlog, PROJE (v3.4), ORCHESTRATION (sürüm 4), session.
+
+**Kararlar / neden:**
+- `resolve` adımındaki `horizon_unknown` atlamaları (günde ~600) kayda alındı ama neden incelenmedi; kod ve veri incelemesi gerekiyor, bu yüzden backlog'a ve task'a açık madde olarak eklendi.
+- ssh yasağı kullanıcı tarafından kaldırıldı; proje izin dosyasındaki ssh satırı dosyada duruyor, dokunulmadı.
+
+**Açık sorunlar:** 11 ve 12 Kasım kontrolleri süresi geçmiş, sonuçları kayıtlı değil. `horizon_unknown` nedeni bilinmiyor.
+
+**Sıradaki adım:** `horizon_unknown` incelemesi; 11–12 Kasım kayıtlarının kapatılması kullanıcı kararı.
+
+---
+
 ## Kayıt şablonu
 
 ```markdown

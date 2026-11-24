@@ -2,7 +2,7 @@
 
 Bu dosya, bu depoda birden fazla ajanın birlikte çalıştığı işlerin kurallarıdır. `CLAUDE.md` genel kuralları, `PROJE.md` tasarımı tanımlar; bu dosya **ajanların nasıl koordine olduğunu** tanımlar. Çelişkide `PROJE.md` ve `CLAUDE.md` kazanır.
 
-Sürüm: 3 (2026-11-14). Sürüm 2'de "izinler araç düzeyinde zorlanmıyor" notu kaldırılmıştı; zorlama alt ajan tanımları, proje izin ayarları ve mekanik kapılarla yapılır (bkz. §3). Sürüm 3 ile: kapsam kapısı betiğe bağlandı (§3), birleştirme yalnızca insan betiğiyle yapılır (§4), kapsam dışı talep akışı ve izin dosyası şablonu eklendi (§4, §8).
+Sürüm: 4 (2026-11-24). Sürüm 4: zorlama katmanı sayısı üçten dörde çıktı (kapsam kancası eklendi, §3). Sürüm 2'de "izinler araç düzeyinde zorlanmıyor" notu kaldırılmıştı; zorlama alt ajan tanımları, proje izin ayarları ve mekanik kapılarla yapılır (bkz. §3). Sürüm 3 ile: kapsam kapısı betiğe bağlandı (§3), birleştirme yalnızca insan betiğiyle yapılır (§4), kapsam dışı talep akışı ve izin dosyası şablonu eklendi (§4, §8).
 
 ## 1. Roller
 
@@ -26,7 +26,7 @@ Lider ile uygulayıcı aynı ajan olamaz. Doğrulayıcı, doğrulanan görevi ya
 
 ## 3. Zorlama katmanları
 
-Kural metni tek başına yetmez; üç katman birlikte çalışır:
+Kural metni tek başına yetmez; dört katman birlikte çalışır:
 
 1. **Araç listesi (alt ajan tanımı):** Uygulayıcıda Edit/Write vardır, doğrulayıcıda yoktur. Lider ana oturumdur; "kod yazmaz" kuralı ana oturumun kendi davranışıyla sağlanır, bu yüzden lider kod değişikliğini alt ajana devreder.
 2. **Proje izin ayarları (`.claude/settings.json`, deny):** ssh, scp, docker, `git push|pull|merge`, `git reset --hard`, `rm -rf`, `.env` okuma. Bu tek başına kapsamı çizmez ama sunucu ve ağ işlerini araç düzeyinde engeller.
@@ -34,7 +34,9 @@ Kural metni tek başına yetmez; üç katman birlikte çalışır:
    - **İzin dosyası:** görevin yazılabilir kümesini tanımlayan düz metin dosyası. Her satır bir tam dosya yolu ya da `dizin/` ile biten bir önektir. `#` ile başlayan satırlar ve boş satırlar yok sayılır.
    - **Çıkış kodları:** `0` hepsi izinli; `1` izin dışı dosya var (her biri listelenir); `2` kullanım ya da ortam hatası (taban ya da dal yok, izin dosyası okunamıyor).
 
-Bu katmanların hiçbiri ajanın komut içeriğini tam denetlemez (bash komutları araç seviyesinde ayrıştırılmaz). Bu yüzden doğrulayıcı kanıtı bağımsız olarak yeniden üretir (§5).
+4. **Kapsam kancası (`PreToolUse`, `.claude/hooks/scope_guard.py`, `.claude/settings.json` içinde `hooks`):** her Edit, Write ve Bash çağrısından önce çalışır. Genel yasaklar (ssh, scp, docker, `git push|pull|merge`, `rm` ile özyineleme ve zorlama, `.env`) her modda geçerlidir. Kanca yapılandırması ve `.claude/hooks/`, `.claude/contracts/` ajan tarafından yazılamaz. Görev sözleşmesi (`BIST_TASK_CONTRACT`) verildiğinde yazma ve komutlar sözleşmedeki listeyle sınırlanır.
+
+Katman 1–3 bash komutlarını ayrıştırmaz; kanca (4) sezgisel bir denetim ekler ve bilinen sınırları vardır (betik başlığında yazılı). Bu yüzden doğrulayıcı kanıtı bağımsız olarak yeniden üretir (§5).
 
 ## 4. Onay kapıları
 
@@ -69,7 +71,7 @@ Uygulayıcı izin dışındaki bir dosyaya ihtiyaç duyarsa o dosyayı kendisi d
 
 Lider bu üç satırı insana iletir. İnsan tek kelimeyle yanıt verir: `ONAY` ya da `RED`. Onaysız kapsam dışına çıkılmaz. Onaylanırsa izin dosyası güncellenir ve kapsam kapısı yeniden çalıştırılır; reddedilirse dosya dala girmez.
 
-Bu konu açık: CLAUDE.md:35 ile K1 uyumu kullanıcı kararı bekliyor.
+Bu konu açık: CLAUDE.md:35 ile K1 uyumu kullanıcı kararı bekliyor. 2026-11-19'da beş dal kullanıcı onayıyla faz-4'e birleşti; kanca birleştirmeyi engellediği için birleştirme insan tarafından yapılır.
 
 ## 5. Doğrulayıcı kuralları
 

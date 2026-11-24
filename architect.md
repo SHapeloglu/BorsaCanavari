@@ -1,6 +1,6 @@
 # architect.md — BIST Tahmin Laboratuvarı: mimari
 
-Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-14.
+Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-24.
 
 ## Bileşenler
 
@@ -45,9 +45,9 @@ Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nas
 - Konteyner `bist-tahmin:latest` (`/opt/bist-tahmin/docker-compose.yml`), ağ `ortak-db` (external), `mem_limit 1g`.
 - Veritabanı `bist_tahmin` ortak Postgres'te (`postgres-ortak`, `:5432`): roller `bist_owner` (NOLOGIN, migration), `bist_app` (LOGIN, en az yetki, `statement_timeout 60s`, bağlantı sınırı 5).
 - Konteyner `.env` (600): yalnızca `DATABASE_URL` (bist_app). Yönetici bağlantısı konteynere verilmez.
-- Cron: `/etc/cron.d/bist-tahmin` (Berlin saatiyle iki olası saat; `ONLY_IST_HOUR` koruması). Sarmalayıcılar `deploy/cron_run.sh`, `deploy/cron_weekly.sh`, `deploy/cron_health.sh` (**sağlık cron'u henüz sunucuda yok**).
+- Cron: `/etc/cron.d/bist-tahmin` (Berlin saatiyle iki olası saat; `ONLY_IST_HOUR` koruması). Sarmalayıcılar `deploy/cron_run.sh`, `deploy/cron_weekly.sh`, `deploy/cron_health.sh` (sağlık cron'u 2026-11-19'dan beri 20:30'da çalışır).
 - Yedek: `postgres-ortak` gecelik `pg_dumpall` (03:50, 04:30) bist_tahmin'i kapsar; geri yükleme testi yapılmadı.
-- Dağıtım: `git archive <dal> | ssh contabo 'tar -x -C /opt/bist-tahmin'`, sonra `docker build -t bist-tahmin:latest .`; önceki imaj `bist-tahmin:prev-*` etiketiyle saklanır.
+- Dağıtım: `git archive <dal> | ssh contabo 'tar -x -C /opt/bist-tahmin'`, sonra `docker build -t bist-tahmin:latest .`; önceki imaj `bist-tahmin:prev-*` etiketiyle saklanır. Son dağıtım (2026-11-19): ayrı dizinde `git archive 7b29738` ile derleme (`bist-tahmin:holdout-7b29738`), ardından `latest`'e etiket; önceki imaj `prev-20261119`.
 
 ## Güvenlik katmanları (veritabanında, uygulama kodunda değil)
 - Tahmin defteri: `predictions` için `bist_app` yalnızca INSERT/SELECT ve çözüm sütunlarında UPDATE; DELETE/TRUNCATE yok; tetikleyici (002, 005) tahmin alanlarını ve çift çözümü engeller; `recorded_at` DB saatine kilitli.

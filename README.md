@@ -6,12 +6,13 @@ BIST 30 için 5 işlem günü yön olasılığı üreten, tahminleri gerçekleş
 
 Tasarımın tek kaynağı [`PROJE.md`](PROJE.md). Mimari için [`architect.md`](architect.md), çalışma kuralları için [`CLAUDE.md`](CLAUDE.md), güncel işler için [`task.md`](task.md), fikirler için [`backlog.md`](backlog.md), oturum günlüğü için [`session.md`](session.md).
 
-## Durum (2026-11-14)
+## Durum (2026-11-24)
 
-- **Canlı:** Contabo sunucusunda günlük akış (19:00 İstanbul) çalışıyor. 9 ve 10 Kasım'da 300 tahmin defterde (10 Kasım sonrası kayıt); 11 Kasım 19:00 çalıştırmasının sonucu bu dokümanda doğrulanmış değil (bkz. task.md).
+- **Canlı:** Contabo sunucusunda günlük akış (19:00 İstanbul) çalışıyor. 19 Kasım'dan beri `bist-tahmin:latest` holdout kanıt düzeltmesini içeriyor (`d6036647f670`); 19, 20 ve 23 Kasım koşuları çıkış 0 ve 150'şer tahmin yazdı (hafta sonu koşu yok). 21 Kasım haftalık rapor üretildi. 11 ve 12 Kasım kontrollerinin sonucu kayıtlı değil (bkz. task.md).
+- **Sağlık:** Sağlık cron'u 20:30'da çalışıyor (19 Kasım'dan beri); `bist health` SAGLIKLI, devre kesici kapalı.
 - **Modeller:** Altyapı hazır (kayıt, eğitim, terfi kontrolü, champion koruması), ama **champion yok**. Terfi bilerek manuel ve kanıt gerektiriyor.
 - **Araştırma:** Üç ön-kayıtlı deney ve `faz35-v2` (E4–E6) koşuldu; hiçbir model baz oranı Brier'da geçmedi. Hisseler arası küçük bir sıralama sinyali var; maliyetten sonra kullanılamıyor.
-- **Açık:** holdout kanıt düzeltmesinin sunucuya dağıtımı (`7b29738`); sağlık cron'unun sunucuya eklenmesi.
+- **Açık:** `resolve` adımında her koşuda ~600 kaydın `horizon_unknown` ile atlanması (bkz. backlog.md).
 
 ## Kurulum (yerel)
 
