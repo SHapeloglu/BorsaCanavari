@@ -4,6 +4,56 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-24
+**Yapılanlar:**
+- Salt okunur kontrol (09:55 İstanbul): 19, 20 ve 23 Kasım 19:00 koşuları çıkış 0, her biri 150 tahmin; 19 Kasım 19:45 yeniden deneme gerekmedi; 21–22 Kasım hafta sonu.
+- Sağlık cron'u 20:30'da çalışıyor (23 Kasım 20:30 kaydı); `health` SAGLIKLI; son başarılı akış 23 Kasım 19:00.
+- Haftalık rapor 21 Kasım 10:00: çıkış 0, `reports/rapor-2026-11-21.md`.
+- ALERT.txt yok; devre kesici kapalı.
+- Tüm proje md dosyaları güncellendi: README, architect, task, backlog, PROJE (v3.4), ORCHESTRATION (sürüm 4), session.
+
+**Kararlar / neden:**
+- `resolve` adımındaki `horizon_unknown` atlamaları (günde ~600) kayda alındı ama neden incelenmedi; kod ve veri incelemesi gerekiyor, bu yüzden backlog'a ve task'a açık madde olarak eklendi.
+- ssh yasağı kullanıcı tarafından kaldırıldı; proje izin dosyasındaki ssh satırı dosyada duruyor, dokunulmadı.
+
+**Ek kontroller (24 Kasım, aynı gün):**
+- 11 Kasım 19:00 (log: 17:00 CET başladı, 17:16 bitti): çıkış 0, 150 tahmin yazıldı. `runs` tablosu sorgulanmadı.
+- 12 Kasım yedeği `postgres-ortak-20261112-0350.sql.gz`: gzip bütünlüğü OK; dökümde `bist_tahmin` veritabanı ve `bist_owner`/`bist_app` rolleri birer kez var.
+- `horizon_unknown`: kod incelendi. `add_trading_days` vade takvimin son işlem gününü aşarsa `None` döndürüyor; yani 5 işlem günlük vadesi henüz dolmamış tahminler. Son 4 tahmin günü × 150 = 600 ile sayı uyumlu. Beklenen davranış; log mesajı "vade bilinemiyor" yanıltıcı.
+
+**Açık sorunlar:** Sunucu imajında `5665b38` inceleme düzeltmeleri yok (imaj `7b29738`'den). Dağıtım kararı bekliyor.
+
+**Sıradaki adım:** 5665b38 dağıtımı için kuru çalıştırma planı onayı.
+
+---
+
+## 2026-11-19
+**Yapılanlar:**
+- Onaylı birleştirmeler (yerel, push yok): `kapi-v3` (kapsam kapisi, K1 betigi, ORCHESTRATION v3), `proje-duzelt` (PROJE v3.3 tur 2), `md-senkron` (architect, README, backlog, task), `verify-script` (scripts/), `kontrol-katmani` (PreToolUse kapsam kancasi). Sonuç faz-4 HEAD `488932b`.
+- `task.md` ile `md-senkron` çakışması: ana dalın holdout/cron/K1 satırları korundu, 11 ve 12 Kasım satırları "süresi geçti" olarak alındı.
+- `kontrol-katmani`'nin `settings.json` çakışması kontrol-katmani sürümüyle çözüldü; deny listesi ana dalla aynı kaldı.
+- Birleştirilmiş ana ağaçta tam takım: 736 passed, 3 skipped, çıkış 0. Kanca testleri: 68/68 geçti.
+- Temizlik: 5 worktree ve dal silindi (`agent/hizli-test` dahil; zaten HEAD'in atasıydı).
+
+**Kararlar / neden:**
+- Birleştirmeler yerelde tutuldu; push, sunucu salt okunur kontrollerinden (`bist health`, `breaker status`, son `runs` satırı) sonra yapılacak (`CLAUDE.md` birleştirme kuralı).
+- Kanca `git merge`/`push`/`pull`'u her modda engelliyor; birleştirmeler bundan sonra kullanıcı tarafından yapılır.
+
+**Sunucu (kullanıcı onayıyla; ssh yasağı yalnızca bu işler için geçici kaldırılıp geri yüklendi):**
+- Salt okunur kontroller (17:29 İstanbul): `bist health` SAGLIKLI (son günlük akış 18 Kasım 19:00 başarılı, veri güncel, takılı iş yok); `bist breaker status` kapalı.
+- Push: `origin/faz-4-yasam-dongusu` `9fc29a0..f62cce0` (23 commit), `git push` yasağı geçici kaldırılıp geri yüklendi.
+- Sağlık cron'u: `/etc/cron.d/bist-tahmin` repo sürümüyle değiştirildi (`cmp` temiz). Önceki dosya `/root/bist-tahmin.cron.bak-20261119`. 20:30 `cron_health.sh` satırı artık etkin.
+- Holdout imajı: `7b29738` ağacından (`git archive`, çalışma ağacı dahil değil) `/opt/bist-tahmin-holdout-7b29738` altında derlendi → `bist-tahmin:holdout-7b29738` (`d6036647f670`). Önceki `latest` (`ce76edae4cad`, 11 Kasım) `bist-tahmin:prev-20261119` olarak etiketlendi; `latest` artık `d6036647f670`. Derleme 15:37 Berlin'de (günlük çalıştırmadan önce) bitti.
+- `run-daily --dry-run` yeni imajla: çıkış 0, yazma yok; 18 Kasım için 150 kayıt zaten vardı, aktif model yok.
+- Sonrası `health` SAGLIKLI, `breaker status` kapalı (15:41 Berlin).
+- Build logu `/root/build-holdout-7b29738.log`, dry-run logu `/root/dryrun-holdout-7b29738.log`.
+
+**Açık sorunlar:** 11 ve 12 Kasım kontrolleri süresi geçmiş; sonuçları kayıtlı değil. 19 Kasım 19:00 çalıştırmasının (ilk günlük koşu yeni imajla) sonucu henüz yok; bakılmalı.
+
+**Sıradaki adım:** 19 Kasım 19:00 ve 19:45 koşusunun `runs` sonucu ve 20:30 sağlık kontrolü; sonra bu kaydı kapatma.
+
+---
+
 ## 2026-11-18
 
 **Yapılanlar:**
@@ -25,6 +75,30 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 **Sıradaki adım:** Sunucu erişimi açılırsa `task.md` ilk iki madde; ardından K1 birleştirme ve kanca pilotu.
 
 ---
+
+## 2026-11-13
+**Yapılanlar:** Salt-okunur inceleme bulgularının uygulanması (commit atılmadı, çalışma ağacında):
+- Vade gelmiş tahminde `missing_bar`, `invalid_price`, `no_prices` artık uyarı (`pipeline.py`).
+- Takvim (XU100) indirilemezse hisseler indirilmez/yazılmaz (`data/fetch.py`).
+- `breaker reset` gunluk akisin kilidini (`lock_job='daily'`) bekler ve `runs`a `breaker-reset` olarak yazilir (`cli.py`, `jobs.py`).
+- Kurumsal islemler fiyattan once cekilir; hata olursa fiyat yazilmaz (`data/fetch.py`).
+- Defter: ayni anahtarli ama icerigi farkli atlanan satirlar sayilir ve uyari verilir (`predict/ledger.py`, `predict/daily.py`).
+- Drift okuma ufuga gore suzulur (`monitor/drift.py`).
+- `--use-holdout` icin `--confirm-holdout` zorunlu (`cli.py`).
+- Egitim kaydina `dropped_nonfinite_rows`; ozellik surumu eksikse reddedilir (`models/train.py`).
+- `run_health` kullanilmayan `cfg` parametresi kaldirildi; `fetch` beklenmeyen hatada temiz cikar.
+- Yeni testler: `tests/test_review_fixes.py` (9 test). Tam takim: 735 passed, 3 skipped, cikis 0.
+
+**Kararlar / neden:**
+- Cron yeniden denemesi (exit 1'de 19:45) bilerek degistirilmedi: exit 1 "eksik veri" anlamina geliyor ve gec gelen veri icin yeniden deneme isin amaci. Bedeli bir idempotent ekstra calisma.
+- Maliyet varsayilani (10 bps) ve devre kesici/terfi maliyet kurali degistirilmedi: politika karari gerektiriyor.
+- `app.allow_promote` GUC sinirini SECURITY DEFINER'a tasima degistirilmedi: veritabani migration'i ve sunucu onayi (K2) gerektirir.
+- `source.py` kismi bolunme uyusmazligini hataya cevirme degistirilmedi: borsapy veri farkliliklarinda yanlis pozitif riski var.
+- Takvim tatil bilgisi (idari izin) ve baz oranlarin ardisik-bar varsayimi degistirilmedi: davranis degisikligi, ayri karar.
+
+**Acik sorunlar:** Sunucu imaji bu degisikliklerden onceki surumde; dagitim K2 onayi bekliyor.
+
+**Sıradaki adım:** Degisikliklerin commit'i (kullanici onayi) ve sonra dagitim karari.
 
 ## 2026-11-11
 
@@ -109,75 +183,6 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 **Açık sorunlar:**
 - `CRON_TZ` desteklenmiyor: çözüm geçici, dokümante.
-
----
-
-## 2026-11-13
-**Yapılanlar:** Salt-okunur inceleme bulgularının uygulanması (commit atılmadı, çalışma ağacında):
-- Vade gelmiş tahminde `missing_bar`, `invalid_price`, `no_prices` artık uyarı (`pipeline.py`).
-- Takvim (XU100) indirilemezse hisseler indirilmez/yazılmaz (`data/fetch.py`).
-- `breaker reset` gunluk akisin kilidini (`lock_job='daily'`) bekler ve `runs`a `breaker-reset` olarak yazilir (`cli.py`, `jobs.py`).
-- Kurumsal islemler fiyattan once cekilir; hata olursa fiyat yazilmaz (`data/fetch.py`).
-- Defter: ayni anahtarli ama icerigi farkli atlanan satirlar sayilir ve uyari verilir (`predict/ledger.py`, `predict/daily.py`).
-- Drift okuma ufuga gore suzulur (`monitor/drift.py`).
-- `--use-holdout` icin `--confirm-holdout` zorunlu (`cli.py`).
-- Egitim kaydina `dropped_nonfinite_rows`; ozellik surumu eksikse reddedilir (`models/train.py`).
-- `run_health` kullanilmayan `cfg` parametresi kaldirildi; `fetch` beklenmeyen hatada temiz cikar.
-- Yeni testler: `tests/test_review_fixes.py` (9 test). Tam takim: 735 passed, 3 skipped, cikis 0.
-
-**Kararlar / neden:**
-- Cron yeniden denemesi (exit 1'de 19:45) bilerek degistirilmedi: exit 1 "eksik veri" anlamina geliyor ve gec gelen veri icin yeniden deneme isin amaci. Bedeli bir idempotent ekstra calisma.
-- Maliyet varsayilani (10 bps) ve devre kesici/terfi maliyet kurali degistirilmedi: politika karari gerektiriyor.
-- `app.allow_promote` GUC sinirini SECURITY DEFINER'a tasima degistirilmedi: veritabani migration'i ve sunucu onayi (K2) gerektirir.
-- `source.py` kismi bolunme uyusmazligini hataya cevirme degistirilmedi: borsapy veri farkliliklarinda yanlis pozitif riski var.
-- Takvim tatil bilgisi (idari izin) ve baz oranlarin ardisik-bar varsayimi degistirilmedi: davranis degisikligi, ayri karar.
-
-**Acik sorunlar:** Sunucu imaji bu degisikliklerden onceki surumde; dagitim K2 onayi bekliyor.
-
-**Sıradaki adım:** Degisikliklerin commit'i (kullanici onayi) ve sonra dagitim karari.
-
-## 2026-11-19
-**Yapılanlar:**
-- Onaylı birleştirmeler (yerel, push yok): `kapi-v3` (kapsam kapisi, K1 betigi, ORCHESTRATION v3), `proje-duzelt` (PROJE v3.3 tur 2), `md-senkron` (architect, README, backlog, task), `verify-script` (scripts/), `kontrol-katmani` (PreToolUse kapsam kancasi). Sonuç faz-4 HEAD `488932b`.
-- `task.md` ile `md-senkron` çakışması: ana dalın holdout/cron/K1 satırları korundu, 11 ve 12 Kasım satırları "süresi geçti" olarak alındı.
-- `kontrol-katmani`'nin `settings.json` çakışması kontrol-katmani sürümüyle çözüldü; deny listesi ana dalla aynı kaldı.
-- Birleştirilmiş ana ağaçta tam takım: 736 passed, 3 skipped, çıkış 0. Kanca testleri: 68/68 geçti.
-- Temizlik: 5 worktree ve dal silindi (`agent/hizli-test` dahil; zaten HEAD'in atasıydı).
-
-**Kararlar / neden:**
-- Birleştirmeler yerelde tutuldu; push, sunucu salt okunur kontrollerinden (`bist health`, `breaker status`, son `runs` satırı) sonra yapılacak (`CLAUDE.md` birleştirme kuralı).
-- Kanca `git merge`/`push`/`pull`'u her modda engelliyor; birleştirmeler bundan sonra kullanıcı tarafından yapılır.
-
-**Sunucu (kullanıcı onayıyla; ssh yasağı yalnızca bu işler için geçici kaldırılıp geri yüklendi):**
-- Salt okunur kontroller (17:29 İstanbul): `bist health` SAGLIKLI (son günlük akış 18 Kasım 19:00 başarılı, veri güncel, takılı iş yok); `bist breaker status` kapalı.
-- Push: `origin/faz-4-yasam-dongusu` `9fc29a0..f62cce0` (23 commit), `git push` yasağı geçici kaldırılıp geri yüklendi.
-- Sağlık cron'u: `/etc/cron.d/bist-tahmin` repo sürümüyle değiştirildi (`cmp` temiz). Önceki dosya `/root/bist-tahmin.cron.bak-20261119`. 20:30 `cron_health.sh` satırı artık etkin.
-- Holdout imajı: `7b29738` ağacından (`git archive`, çalışma ağacı dahil değil) `/opt/bist-tahmin-holdout-7b29738` altında derlendi → `bist-tahmin:holdout-7b29738` (`d6036647f670`). Önceki `latest` (`ce76edae4cad`, 11 Kasım) `bist-tahmin:prev-20261119` olarak etiketlendi; `latest` artık `d6036647f670`. Derleme 15:37 Berlin'de (günlük çalıştırmadan önce) bitti.
-- `run-daily --dry-run` yeni imajla: çıkış 0, yazma yok; 18 Kasım için 150 kayıt zaten vardı, aktif model yok.
-- Sonrası `health` SAGLIKLI, `breaker status` kapalı (15:41 Berlin).
-- Build logu `/root/build-holdout-7b29738.log`, dry-run logu `/root/dryrun-holdout-7b29738.log`.
-
-**Açık sorunlar:** 11 ve 12 Kasım kontrolleri süresi geçmiş; sonuçları kayıtlı değil. 19 Kasım 19:00 çalıştırmasının (ilk günlük koşu yeni imajla) sonucu henüz yok; bakılmalı.
-
-**Sıradaki adım:** 19 Kasım 19:00 ve 19:45 koşusunun `runs` sonucu ve 20:30 sağlık kontrolü; sonra bu kaydı kapatma.
-
----
-
-## 2026-11-24
-**Yapılanlar:**
-- Salt okunur kontrol (09:55 İstanbul): 19, 20 ve 23 Kasım 19:00 koşuları çıkış 0, her biri 150 tahmin; 19 Kasım 19:45 yeniden deneme gerekmedi; 21–22 Kasım hafta sonu.
-- Sağlık cron'u 20:30'da çalışıyor (23 Kasım 20:30 kaydı); `health` SAGLIKLI; son başarılı akış 23 Kasım 19:00.
-- Haftalık rapor 21 Kasım 10:00: çıkış 0, `reports/rapor-2026-11-21.md`.
-- ALERT.txt yok; devre kesici kapalı.
-- Tüm proje md dosyaları güncellendi: README, architect, task, backlog, PROJE (v3.4), ORCHESTRATION (sürüm 4), session.
-
-**Kararlar / neden:**
-- `resolve` adımındaki `horizon_unknown` atlamaları (günde ~600) kayda alındı ama neden incelenmedi; kod ve veri incelemesi gerekiyor, bu yüzden backlog'a ve task'a açık madde olarak eklendi.
-- ssh yasağı kullanıcı tarafından kaldırıldı; proje izin dosyasındaki ssh satırı dosyada duruyor, dokunulmadı.
-
-**Açık sorunlar:** 11 ve 12 Kasım kontrolleri süresi geçmiş, sonuçları kayıtlı değil. `horizon_unknown` nedeni bilinmiyor.
-
-**Sıradaki adım:** `horizon_unknown` incelemesi; 11–12 Kasım kayıtlarının kapatılması kullanıcı kararı.
 
 ---
 
