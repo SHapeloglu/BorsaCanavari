@@ -4,6 +4,21 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-25 — dal temizliği ve ayar kontrolü
+**Yapılanlar:**
+- Kullanıcı onayıyla uzak dallar silindi: `faz-0-1-iskelet-veri`, `faz-2-defter`, `faz-3-5-lab` (üçü de faz-4'e birleşmişti).
+- Onaylanan `agent/kanca-kapsam-v2` (yerel ve uzak) ile `agent/kanca-dorduncu-tur` (yerel, `d3da116`) ve `wt-kanca-v2`, `wt-kanca4` worktree'leri silme komutundan önce zaten yoktu. Ben silmedim; silenin kim olduğu doğrulanamadı.
+- `.claude/settings.json`: yerel `git push` deny satırının silinmiş hali `git checkout --` ile geri alındı (HEAD'deki hali). Ardından `19c8254` (SHapeloglu, ajan commit'i değil) deny listesini kalıcı olarak düzeltti: `Bash(git push:*)` geri eklendi, `Bash(git add -f:*)` eklendi. Bu commit `origin/faz-4-yasam-dongusu`'nda; commit mesajına göre tam takım 736 passed, 3 skipped, çıkış 0.
+- `deploy-splits-fix` (`ff60a45`) silinmedi: splits commit'i `cab326c` ile aynı patch-id (`07151f3`), ama dal 27 dosyada farklı başka commit'ler de içeriyor.
+
+**Açık sorunlar:**
+- `deploy-splits-fix` dalının tutulup tutulmayacağı kararı kullanıcıda. Silinirse README'deki "sunucu dağıtım dalı" satırı güncellenmeli.
+- Git nesne deposu temizliği (`git fsck` uyarıları) ve disk %92: işlem yok.
+
+**Sıradaki adım:** 25 Kasım 19:00 İstanbul koşusu ve 20:30 sağlık kontrolü.
+
+---
+
 ## 2026-11-25 — 24 Kasım akşam kontrolü (salt okunur)
 **Yapılanlar:**
 - Sunucuya salt okunur ssh ile bakıldı (kullanıcı "kontrol et" onayı). Yazma, derleme ya da cron değişikliği yok.

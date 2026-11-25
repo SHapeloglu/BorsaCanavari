@@ -13,6 +13,7 @@ Durum: 2026-11-25. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 - [x] **Sunucu imajını güncel koda al** (2026-11-24, uygulandı): `b549f0d` (runtime kodu `5665b38` ile aynı) `bist-tahmin:head-b549f0d` olarak derlendi; `latest` = `b3b284670391`; önceki `latest` `prev-20261124` (holdout `d6036647`). Kuru çalıştırma çıkış 0, `health` ve `breaker` temiz. Geri dönüş: `holdout-7b29738` etiketini `latest` yap. Eski plan metni: Kapsam: 11 kaynak dosya (`cli`, `fetch`, `jobs`, `promote`, `train`, `breaker`, `drift`, `health`, `pipeline`, `predict/daily`, `predict/ledger`); migration yok, şema değişmiyor. `predict/daily.py` ve `ledger.py` günlük yazma yolunda; kuru çalıştırma zorunlu. Plan: `git archive` ile ayrı dizin → `bist-tahmin:head-<sha>` derleme (arka planda, `< /dev/null`) → kod marker kontrolü → `run-daily --dry-run` → `health` → 18:30 İstanbul öncesinde `latest` etiketi (önceki: `prev-20261124`). Geri dönüş: `holdout-7b29738` etiketini `latest` yap.
 
 - [x] **Kapsam kancası birleştirme** (2026-11-24, K1 onayı, yerel `8f36b6b`; GitHub'a push 2026-11-25'te doğrulandı, uzak başı yerel ile aynı): `agent/kanca-kapsam-v2` faz-4'e birleşti. Bash genel yasakları kancada artık uyarı; sert engel yalnızca `permissions.deny` ön eklerinde (dolaylı çağrılara karşı korumasız). İzin listesi engelleme etkisi doğrulanmadı. Eski `agent/kanca-dorduncu-tur` (`d3da116`) yerelde, ayrıca bir karar bekliyor.
+- [ ] **`deploy-splits-fix` dalı kararı** (2026-11-25): splits değişikliği faz-4'te (`cab326c`, aynı patch-id); dal 27 dosyada farklı başka commit'ler içeriyor. Tutulacak mı, silinecek mi kullanıcı karar verir. Silinirse README "sunucu dağıtım dalı" satırı güncellenir.
 - [ ] **Git nesne deposu temizliği**: `.git/objects` içinde boş nesneler var (`git fsck` hataları; ana geçmiş sağlam). Yedek alınıp silme kararı kullanıcıda; silmeden yapılmaz.
 
 ## 🚧 Devam Eden
@@ -21,6 +22,7 @@ Durum: 2026-11-25. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 
 ## ✅ Tamamlanan
 
+- [x] 2026-11-25 — Dal temizliği: uzak `faz-0-1-iskelet-veri`, `faz-2-defter`, `faz-3-5-lab` silindi (faz-4'e birleşmişti). `agent/kanca-kapsam-v2` ve `agent/kanca-dorduncu-tur` ile worktree'ler silme öncesinde zaten yoktu. Ayrıntı: `session.md` 2026-11-25.
 - [x] 2026-11-25 — 24 Kasım akşam kontrolü (salt okunur): 19:00 koşusu (17:00 CET) çıkış 0, 150 tahmin, 0 zaten vardı, 600 `horizon_unknown` atlaması (beklenen); 19:45 yeniden deneme atlandı (zaten başarılı); 20:30 sağlık SAGLIKLI; ALERT yok; devre kesici kapalı; aktif model yok; disk %92 (17 GB boş). Ayrıntı: `session.md` 2026-11-25.
 - [x] 2026-11-24 — Kapsam kancası: Bash bulguları uyarıya çevrildi, `.claude/settings.json` izin listesi eklendi (engelleme etkisi doğrulanmadı) (`agent/kanca-kapsam-v2`, faz-4 üstünde; commit: bkz. dal). Kanca testleri 75/75; tam takım bu dalda koşuldu.
 - [x] 2026-11-24 — Günlük akış kontrolü (salt okunur): 19, 20 ve 23 Kasım koşuları çıkış 0, her biri 150 tahmin; `health` SAGLIKLI; devre kesici kapalı; haftalık rapor 21 Kasım üretildi; ALERT yok.
