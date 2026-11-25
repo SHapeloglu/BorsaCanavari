@@ -68,4 +68,4 @@ Konteyner, cron ve veritabanı kurulumu için [`PROJE.md` Bölüm 19](PROJE.md) 
 
 ## Dallar
 
-`main` dalı yok. Çalışma dalı `faz-4-yasam-dongusu`. Önceki fazlar `faz-*` dallarında; sunucu dağıtım dalı `deploy-splits-fix` (yalnızca splits düzeltmesi).
+`main` dalı yok. Çalışma dalı `faz-4-yasam-dongusu`. Önceki fazların dalları (`faz-0-1-iskelet-veri`, `faz-2-defter`, `faz-3-5-lab`) faz-4'e birleşti ve uzaktan silindi. Sunucu `git archive <sha>` ile dağıtır; dal kullanmaz. `deploy-splits-fix` uzaktan silindi (2026-11-25); tek commit'i (`ff60a45`, splits önbelleği) faz-4'te `cab326c` olarak var, yerel `deploy-splits-fix` dalı arşiv olarak duruyor.

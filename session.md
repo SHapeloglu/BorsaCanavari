@@ -5,6 +5,8 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 ---
 
 ## 2026-11-25 — dal temizliği ve ayar kontrolü
+**Karar sonrası (kullanıcı onayı "onaylıyorum"):** uzak `deploy-splits-fix` silindi. Dalda faz-4'te olmayan tek commit `ff60a45` idi; splits değişikliği faz-4'te `cab326c` olarak var (aynı patch-id `07151f3`). Yerel `deploy-splits-fix` dalı `ff60a45` üzerinde arşiv olarak kaldı. README "Dallar" bölümü buna göre güncellendi.
+
 **Yapılanlar:**
 - Kullanıcı onayıyla uzak dallar silindi: `faz-0-1-iskelet-veri`, `faz-2-defter`, `faz-3-5-lab` (üçü de faz-4'e birleşmişti).
 - Onaylanan `agent/kanca-kapsam-v2` (yerel ve uzak) ile `agent/kanca-dorduncu-tur` (yerel, `d3da116`) ve `wt-kanca-v2`, `wt-kanca4` worktree'leri silme komutundan önce zaten yoktu. Ben silmedim; silenin kim olduğu doğrulanamadı.
