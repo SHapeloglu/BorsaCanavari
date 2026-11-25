@@ -2,30 +2,36 @@
 # PreToolUse kancasi: ajanin kapsamini makine tarafinda zorlar.
 #
 # Girdi : stdin'de JSON, alanlar "tool_name" ve "tool_input".
-# Cikis : 0 = izin, 2 = engel (neden stderr'e yazilir). Baska kod kullanilmaz.
+# Cikis : 0 = izin (Bash uyarisi dahil), 2 = engel (neden stderr'e yazilir). Baska kod kullanilmaz.
+#
+# SINIR: Edit/Write/MultiEdit/NotebookEdit icin yol kontrolu zorlayici bir sinirdir.
+#   Bash icin bu kanca yalnizca UYARI uretir (exit 0, stderr'e "UYARI"). Shell metni regex ile
+#   tam ayristirilamadigi icin Bash kurallari sinir degildir; Bash kapsami izin listesiyle
+#   (.claude/settings.json "allow" ve "deny") sinirlanir.
 #
 # Lider modu (BIST_TASK_CONTRACT tanimli degil):
 #   Edit/Write/MultiEdit/NotebookEdit yalnizca KOD_YOLLARI altinda engellenir.
-#   Bash icin yalnizca genel yasaklar uygulanir.
 # Sozlesme modu (BIST_TASK_CONTRACT = sozlesme JSON dosyasinin yolu):
 #   Yazma yalnizca "write" globlarina izinli.
-#   Bash yalnizca "commands" onekleriyle baslayan komutlara izinli.
-#   "deny" ek regex listesi Bash komutuna ve yazma yoluna uygulanir.
-#   "read" alani bilgi amaclidir; kanca tarafindan zorlanmaz.
+#   "deny" ek regex listesi yazma yoluna uygulanir.
+#   "read" ve "commands" alanlari bilgi amaclidir; kanca tarafindan zorlanmaz.
 # Korumali kanca yapilandirmasi (her modda, sozlesme var ya da yok): .claude/settings.json,
 #   .claude/settings.local.json, .claude/contracts/** ve .claude/hooks/** yazilamaz.
-# Genel yasaklar (her modda, Bash): ssh, scp, docker, git push/pull/merge,
+# Asagidaki Bash kurallari (genel yasaklar, ek kurallar, yazma) yalnizca UYARI uretir; engellemez.
+# Genel yasaklar (Bash): ssh, scp, docker, git push/pull/merge,
 #   git reset --hard, rm ile ozyineleme (-r/-R/--recursive) ve zorlama (-f/--force) birlikte
 #   (bayrak sirasi ve birlesik bicim fark etmez), .env dosyasi kullanimi.
-# Ek Bash kurallari (her modda): degisken/komut ikamesi ($, `) yikici komutla birlikteyse,
-#   ANSI-C dizgi ($'...\..'), eval/source/exec/., bayrak yoksa kabuk ya da yorumlayici
-#   (stdin betigi), satir ici yorumlayici kodu (python -c, perl -e, awk), xargs ile yikici
-#   komut, find -delete/-exec yasak.
-# Bash ile dosya yazma (> >> tee cp mv dd sed -i, git checkout/restore vb.):
-#   sozlesme modunda hic yok (yazma Edit/Write + write listesiyle yapilir); lider modunda
-#   yalnizca komut KOD_ISARETLERI'nden (kod yollari, .claude/, settings.json) birini anarsa engel.
-# Bilinen sinirlar (kanca tek basina sinir degildir): yorumlayici icindeki dosya islemleri
-#   (ornegin python3 -m modul calistirmasi), kabuk disi sistem cagrilari ve Read araci kapsam disi.
+# Ek Bash kurallari (her modda): komut ikamesi (`...` ve $(...)) ve ANSI-C dizgi ($'...\..')
+#   yasak; komut adi (sarmalayicilar env/nohup/nice/timeout/sudo arkasinda dahil) degiskenden
+#   gelemez; rm argumani, xargs argumani, git alt komutu, kabuk -c icerigi degisken iceremez;
+#   eval/source/exec/., bayrak yoksa kabuk ya da yorumlayici (stdin betigi), satir ici yorumlayici
+#   kodu (python -c, perl -e, awk), xargs ile yikici komut, find -delete/-exec yasak.
+# Bash ile dosya yazma (> >> >& tee cp mv dd sed -i ve w/e komutu, tar, curl -o, git checkout/restore
+#   vb.; kabuk -c ve sarmalayici arkasi dahil): sozlesme modunda hic yok (yazma Edit/Write +
+#   write listesiyle yapilir); lider modunda yalnizca komut KOD_ISARETLERI'nden (kod yollari,
+#   .claude/, settings.json) birini anarsa engel. Yonlendirme > ile fd kopyasi >&N ayni sayilmaz.
+# Bilinen sinirlar (kanca tek basina sinir degildir): dosya calistiran yorumlayici (/tmp'e yazilip
+#   python3 /tmp/x.py ile calistirma), python3 -m modul ile test kodunun yan etkisi, Read araci.
 # Hata durumu (JSON, sozlesme, beklenmeyen istisna): kapali basarisizlik, exit 2.
 
 import fnmatch
@@ -81,7 +87,18 @@ KOD_ISARETLERI = ("src/", "tests/", "scripts/", "deploy/", ".claude/", "settings
 YAZMA_KOMUTLARI = frozenset({
     "tee", "cp", "mv", "dd", "install", "truncate", "ln", "rsync", "chmod", "chown",
     "touch", "mkdir", "rmdir", "unlink", "shred", "patch",
+    "tar", "unzip", "gunzip", "gzip", "bzip2", "xz", "zip", "curl", "wget",
 })
+# Komut konumunun arkasina gecen sarmalayicilar: env tee, nohup tee, nice -n 5 tee ...
+SARMALAYICILAR = frozenset({
+    "env", "nohup", "nice", "timeout", "command", "time", "stdbuf", "sudo", "exec",
+    "builtin", "setsid", "ionice", "chrt", "unbuffer",
+})
+SAYISAL_DESENI = re.compile(r"[0-9.]+[smhd]?")
+# Dosya yonlendirmesi degil fd kopyasi: >&N, >&- (sonrasi bir sinir olmali; >&1src/x degildir)
+FD_KOPYA_DESENI = re.compile(r"&(?:\d+|-)(?=$|[\s;|&)])")
+# sed betiginde w/W/e komutu (dosyaya yazar ya da kabuk calistirir); s///w dahil
+SED_YAZMA_DESENI = re.compile(r"(?:^|[;{}\s/\d$])[wWe](?=\s|$|;|/)")
 GIT_YAZMA_ALTKOMUTLARI = frozenset({
     "checkout", "restore", "clean", "apply", "am", "stash", "reset", "rebase",
     "cherry-pick", "mv", "rm",
@@ -327,10 +344,35 @@ def _rm_ihlali(kalan: List[str]) -> Optional[str]:
     return None
 
 
+def _asil_komut(tokenlar: List[str]) -> List[str]:
+    """Atamalari ve sarmalayicilari (env, nohup, nice -n 5, timeout 10 ...) atlayip asil
+    komut ve argumanlarini dondurur. Sarmalayicinin secenek ve sayisal argumanlari atlanir."""
+    i = 0
+    while i < len(tokenlar):
+        t = tokenlar[i]
+        if ATAMA_DESENI.match(t):
+            i += 1
+            continue
+        if os.path.basename(t) in SARMALAYICILAR:
+            i += 1
+            while i < len(tokenlar) and (
+                tokenlar[i].startswith("-")
+                or ATAMA_DESENI.match(tokenlar[i])
+                or SAYISAL_DESENI.fullmatch(tokenlar[i])
+            ):
+                i += 1
+            continue
+        break
+    return tokenlar[i:]
+
+
 def _komut_konumu_ihlali(kom: List[str]) -> Optional[str]:
-    """Segmentin komut konumundaki (atamalardan sonraki ilk) kelimeyi denetler."""
+    """Segmentin asil komut konumunu (atama ve sarmalayicilardan sonra) denetler."""
+    kom = _asil_komut(kom)
     if not kom:
         return None
+    if "$" in kom[0] or "`" in kom[0]:
+        return "dinamik komut adı yasak (değişken ya da komut ikamesi)"
     taban = os.path.basename(kom[0])
     kalan = kom[1:]
     if taban in KABUK_KACISI_KOMUTLARI:
@@ -360,16 +402,26 @@ def _segment_ihlali(tokenlar: List[str], derinlik: int) -> Optional[str]:
         sebep = None
         if taban == "git":
             sebep = _git_ihlali(kalan)
+            k = _git_altkomut(kalan)
+            if sebep is None and k is not None and _dinamik(kalan[k]):
+                sebep = "git alt komutu dinamik olamaz"
         elif taban == "rm":
             sebep = _rm_ihlali(kalan)
+            if sebep is None and any(_dinamik(x) for x in kalan):
+                sebep = "rm dinamik argüman alamaz (değişken ya da komut ikamesi)"
         elif taban == "xargs" and any(os.path.basename(x) in YIKICI_KOMUTLAR for x in kalan):
             sebep = "xargs ile yıkıcı ya da kabuk komutu çalıştırılamaz"
+        elif taban == "xargs" and any(_dinamik(x) for x in kalan):
+            sebep = "xargs dinamik argüman alamaz"
         elif taban == "find" and any(x in FIND_YIKICI_BAYRAKLAR for x in kalan):
             sebep = "find -delete/-exec yasak"
         elif taban in KABUK_ISIMLERI and _kabuk_c_konumu(kalan) is not None:
             k = _kabuk_c_konumu(kalan)
             if k + 1 < len(kalan):
-                sebep = _genel_ihlal(kalan[k + 1], derinlik + 1)
+                if _dinamik(kalan[k + 1]):
+                    sebep = "kabuk -c içeriği dinamik olamaz"
+                else:
+                    sebep = _genel_ihlal(kalan[k + 1], derinlik + 1)
         if sebep:
             return sebep
     return None
@@ -394,26 +446,31 @@ def _yonlendirme_var(komut: str) -> bool:
         elif c == '"':
             cift = not cift
         elif c == ">":
-            if komut[i + 1:i + 2] == "&" and komut[i + 2:i + 3] and (
-                komut[i + 2].isdigit() or komut[i + 2] == "-"
-            ):
-                i += 3
+            kopya = FD_KOPYA_DESENI.match(komut, i + 1)
+            if kopya:
+                i = kopya.end()
                 continue
             return True
         i += 1
     return False
 
 
-def _yazma_gostergesi(komut: str) -> Optional[str]:
-    """Komutun dosya yazabilecegini gosteren ilk isaret; yoksa None."""
+def _yazma_gostergesi(komut: str, derinlik: int = 0) -> Optional[str]:
+    """Komutun dosya yazabilecegini gosteren ilk isaret; yoksa None.
+
+    Her segmentin asil komut konumuna (sarmalayicilardan sonra) bakar; kabuk -c iceriklerini
+    ozyinelemeli tarar. Tum argumanlar taranmaz: 'grep cp src/' gibi okuma komutlari engellenmez.
+    """
     if _yonlendirme_var(komut):
         return "dosya yönlendirmesi (>)"
+    if derinlik > MAX_KABUK_DERINLIGI:
+        return "çok fazla iç içe kabuk çağrısı"
     for parca in komut_parcala(komut):
-        tokenlar = komut_tokenlari(_tokenlar(parca))
-        if not tokenlar:
+        kom = _asil_komut(komut_tokenlari(_tokenlar(parca)))
+        if not kom:
             continue
-        taban = os.path.basename(tokenlar[0])
-        kalan = tokenlar[1:]
+        taban = os.path.basename(kom[0])
+        kalan = kom[1:]
         if taban in YAZMA_KOMUTLARI:
             return taban
         if taban in ("sed", "perl") and any(
@@ -421,19 +478,38 @@ def _yazma_gostergesi(komut: str) -> Optional[str]:
             for t in kalan
         ):
             return f"{taban} -i (yerinde düzenleme)"
+        if taban == "sed" and any(
+            SED_YAZMA_DESENI.search(t) for t in kalan if not t.startswith("-")
+        ):
+            return "sed w/e komutu (dosyaya yazma ya da kabuk çağrısı)"
         if taban == "git":
             k = _git_altkomut(kalan)
             if k is not None and kalan[k] in GIT_YAZMA_ALTKOMUTLARI:
                 return f"git {kalan[k]}"
+        if taban in KABUK_ISIMLERI:
+            k = _kabuk_c_konumu(kalan)
+            if k is not None and k + 1 < len(kalan):
+                sebep = _yazma_gostergesi(kalan[k + 1], derinlik + 1)
+                if sebep:
+                    return f"{sebep} (kabuk -c içinde)"
     return None
 
 
+def _dinamik(metin: str) -> bool:
+    """Metinde degisken ya da komut ikamesi isareti var mi (kabaca; fail-closed)."""
+    return bool(DINAMIK_DESENI.search(metin))
+
+
 def _dinamik_ihlali(komut: str) -> Optional[str]:
-    """Degisken ya da komut ikamesi yikici bir komutla birlikteyse, ya da ANSI-C dizgi varsa engel."""
+    """ANSI-C dizgi kacisi ve komut ikamesi (`...` ya da $(...)) her modda yasak.
+
+    Komut ikamesi ciktisi bir komut adi olabilir ve bolucu ayirici ikameyi gorunmez kilar;
+    bu yuzden tum ikame bicimleri engellenir. Degisken acilimlari yalnizca yikici baglamda
+    (komut adi, rm/xargs argumani, git alt komutu, kabuk -c icerigi) segment kontrolunde engellenir."""
     if ANSI_C_DIZGI.search(komut):
         return "ANSI-C dizgi kaçışı yasak (gizli komut kurmaya yarar)"
-    if DINAMIK_DESENI.search(komut) and any(isim in komut for isim in YIKICI_KOMUTLAR):
-        return "değişken ya da komut ikamesi yıkıcı komutla birlikte yasak"
+    if "`" in komut or "$(" in komut:
+        return "komut ikamesi (`...` ya da $(...)) yasak; değer ayrı bir adımda alınmalı"
     return None
 
 
@@ -517,7 +593,12 @@ def karar(veri, ortam) -> None:
     root = proje_koku(ortam)
     kontrat = kontrat_yukle(ortam, root)
     if arac == BASH_ARACI:
-        _bash_kontrol(girdi, kontrat)
+        # Bash sinir degildir: bulgu yalnizca uyari olarak yazilir, komut engellenmez.
+        # Bozuk girdi ve kanca hatasi yine KancaHatasi olarak kapali basarisizlik verir.
+        try:
+            _bash_kontrol(girdi, kontrat)
+        except Engel as hata:
+            sys.stderr.write(f"UYARI (Bash, sinir degil; izin listesi listede olmayani engellemez): {hata}\n")
     else:
         _yazma_kontrol(arac, girdi, root, kontrat)
 

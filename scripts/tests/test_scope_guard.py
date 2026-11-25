@@ -89,6 +89,11 @@ class KancaTesti(unittest.TestCase):
     def izin_bekle(self, sonuc):
         self.assertEqual(sonuc.returncode, 0, msg=f"izin beklenirdi: {sonuc.stderr}")
 
+    def uyari_bekle(self, sonuc):
+        # Bash bulgusu sinir degildir: exit 0 ve UYARI satiri (sinir izin listesidir).
+        self.assertEqual(sonuc.returncode, 0, msg=f"Bash engellenmemeliydi, cikis {sonuc.returncode}")
+        self.assertIn("UYARI (Bash", sonuc.stderr)
+
     def engel_bekle(self, sonuc):
         self.assertEqual(sonuc.returncode, 2, msg=f"engel beklenirdi, cikis {sonuc.returncode}")
         self.assertIn("KAPSAM DIŞI:", sonuc.stderr)
@@ -160,17 +165,17 @@ class KancaTesti(unittest.TestCase):
         self.engel_bekle(self.kos(yazma("src/x.py"), sozlesme=yol))
         self.izin_bekle(self.kos(yazma("session.md"), sozlesme=yol))
 
-    # ------------------------------------------- (d)-(i): Bash
+    # ------------------------------------------- (d)-(i): Bash (yalnizca uyari; sinir izin listesi)
 
-    def test_d_ssh_sozlesmeden_bagimsiz_engel(self):
-        self.engel_bekle(self.kos(bash("ssh contabo")))
+    def test_d_ssh_sozlesmeden_bagimsiz_uyari(self):
+        self.uyari_bekle(self.kos(bash("ssh contabo")))
         yol = self.sozlesme_dosyasi(dict(KONTRAT, commands=["ssh"]))
-        self.engel_bekle(self.kos(bash("ssh contabo"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("ssh contabo"), sozlesme=yol))
 
-    def test_e_git_push_engel(self):
-        self.engel_bekle(self.kos(bash("git push origin dal")))
+    def test_e_git_push_uyari(self):
+        self.uyari_bekle(self.kos(bash("git push origin dal")))
         yol = self.sozlesme_dosyasi(KONTRAT)
-        self.engel_bekle(self.kos(bash("git push"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("git push"), sozlesme=yol))
 
     def test_f_sozlesme_komut_onegi_icinde_izin(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
@@ -178,37 +183,37 @@ class KancaTesti(unittest.TestCase):
 
     def test_f_sozlesme_komut_onegi_disinda_engel(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
-        self.engel_bekle(self.kos(bash("curl x"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("curl x"), sozlesme=yol))
 
     def test_f_lider_modunda_serbest_komut_izinli(self):
         self.izin_bekle(self.kos(bash("curl --version")))
 
     def test_g_zincirleme_ssh_engel(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
-        self.engel_bekle(self.kos(bash("python3 -m unittest x && ssh y"), sozlesme=yol))
-        self.engel_bekle(self.kos(bash("python3 -m unittest x && ssh y")))
+        self.uyari_bekle(self.kos(bash("python3 -m unittest x && ssh y"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("python3 -m unittest x && ssh y")))
 
     def test_i_env_okuma_engel(self):
-        self.engel_bekle(self.kos(bash("cat .env")))
-        self.engel_bekle(self.kos(bash("head -n 3 .env")))
-        self.engel_bekle(self.kos(bash("source .env")))
-        self.engel_bekle(self.kos(bash("grep X < .env")))
+        self.uyari_bekle(self.kos(bash("cat .env")))
+        self.uyari_bekle(self.kos(bash("head -n 3 .env")))
+        self.uyari_bekle(self.kos(bash("source .env")))
+        self.uyari_bekle(self.kos(bash("grep X < .env")))
 
     def test_rm_rf_engel_rm_f_serbest(self):
-        self.engel_bekle(self.kos(bash("rm -rf /tmp/x")))
-        self.engel_bekle(self.kos(bash("rm -r -f /tmp/x")))
-        self.engel_bekle(self.kos(bash("rm -fr /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm -rf /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm -r -f /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm -fr /tmp/x")))
         self.izin_bekle(self.kos(bash("rm -f /tmp/x")))
 
     def test_rm_bayrak_sirasi_ve_bicim_engel(self):
-        self.engel_bekle(self.kos(bash("rm -r --force /tmp/x")))  # (a)
-        self.engel_bekle(self.kos(bash("rm --recursive -f /tmp/x")))  # (b)
-        self.engel_bekle(self.kos(bash("rm -fr /tmp/x")))  # (c)
-        self.engel_bekle(self.kos(bash("rm -Rfv /tmp/x")))
-        self.engel_bekle(self.kos(bash("rm -f -R /tmp/x")))
-        self.engel_bekle(self.kos(bash("rm --force --recursive /tmp/x")))
-        self.engel_bekle(self.kos(bash("rm --f --r /tmp/x")))  # getopt tarzi kisaltma
-        self.engel_bekle(self.kos(bash("rm -r dizin && rm -f -R y")))  # zincirde ikinci parca
+        self.uyari_bekle(self.kos(bash("rm -r --force /tmp/x")))  # (a)
+        self.uyari_bekle(self.kos(bash("rm --recursive -f /tmp/x")))  # (b)
+        self.uyari_bekle(self.kos(bash("rm -fr /tmp/x")))  # (c)
+        self.uyari_bekle(self.kos(bash("rm -Rfv /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm -f -R /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm --force --recursive /tmp/x")))
+        self.uyari_bekle(self.kos(bash("rm --f --r /tmp/x")))  # getopt tarzi kisaltma
+        self.uyari_bekle(self.kos(bash("rm -r dizin && rm -f -R y")))  # zincirde ikinci parca
 
     def test_rm_ozyinelemesiz_veya_zorlamasiz_serbest(self):
         self.izin_bekle(self.kos(bash("rm -r /tmp/x")))  # (d)
@@ -273,24 +278,24 @@ class KancaTesti(unittest.TestCase):
         self.engel_bekle(sonuc)
 
     def test_git_reset_hard_engel_git_log_serbest(self):
-        self.engel_bekle(self.kos(bash("git reset --hard HEAD~1")))
-        self.engel_bekle(self.kos(bash("git -C /x reset --hard")))
+        self.uyari_bekle(self.kos(bash("git reset --hard HEAD~1")))
+        self.uyari_bekle(self.kos(bash("git -C /x reset --hard")))
         self.izin_bekle(self.kos(bash("git log --grep=merge --oneline")))
 
     def test_git_altkomut_secenekten_sonra_engel(self):
-        self.engel_bekle(self.kos(bash("git -C /x push")))
-        self.engel_bekle(self.kos(bash("git --no-pager pull")))
-        self.engel_bekle(self.kos(bash("git merge dal")))
+        self.uyari_bekle(self.kos(bash("git -C /x push")))
+        self.uyari_bekle(self.kos(bash("git --no-pager pull")))
+        self.uyari_bekle(self.kos(bash("git merge dal")))
 
     def test_docker_ve_scp_engel(self):
-        self.engel_bekle(self.kos(bash("docker ps")))
-        self.engel_bekle(self.kos(bash("scp a b:/tmp")))
+        self.uyari_bekle(self.kos(bash("docker ps")))
+        self.uyari_bekle(self.kos(bash("scp a b:/tmp")))
 
     def test_komut_yerine_gecen_ve_kabuk_cagrisi_engel(self):
-        self.engel_bekle(self.kos(bash("echo \"$(ssh x)\"")))
-        self.engel_bekle(self.kos(bash("sh -c \"git push\"")))
-        self.engel_bekle(self.kos(bash("(ssh x)")))
-        self.engel_bekle(self.kos(bash("echo `ssh x`")))
+        self.uyari_bekle(self.kos(bash("echo \"$(ssh x)\"")))
+        self.uyari_bekle(self.kos(bash("sh -c \"git push\"")))
+        self.uyari_bekle(self.kos(bash("(ssh x)")))
+        self.uyari_bekle(self.kos(bash("echo `ssh x`")))
 
     def test_tirnak_icindeki_ayirici_bolmez(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
@@ -302,8 +307,8 @@ class KancaTesti(unittest.TestCase):
 
     def test_sozlesme_komut_eslesmesi_token_bazli(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
-        self.engel_bekle(self.kos(bash("python3 -m unittestx"), sozlesme=yol))
-        self.engel_bekle(self.kos(bash("echo ok; curl x"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("python3 -m unittestx"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("echo ok; curl x"), sozlesme=yol))
 
     def test_ortam_atamasi_onekten_once_atilir(self):
         yol = self.sozlesme_dosyasi(KONTRAT)
@@ -314,11 +319,11 @@ class KancaTesti(unittest.TestCase):
     def test_sozlesme_deny_komutta_eslesirse_engel(self):
         veri = dict(KONTRAT, deny=[r"--hard"])
         yol = self.sozlesme_dosyasi(veri)
-        self.engel_bekle(self.kos(bash("git status --hard"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("git status --hard"), sozlesme=yol))
 
     def test_bos_komut_listesi_tum_bashi_engeller(self):
         yol = self.sozlesme_dosyasi(dict(KONTRAT, commands=[]))
-        self.engel_bekle(self.kos(bash("echo x"), sozlesme=yol))
+        self.uyari_bekle(self.kos(bash("echo x"), sozlesme=yol))
 
     def test_bos_yazma_listesi_tum_yazmayi_engeller(self):
         yol = self.sozlesme_dosyasi(dict(KONTRAT, write=[]))

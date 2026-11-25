@@ -1,5 +1,19 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(scripts/verify_task.sh:*)",
+      "Bash(scripts/check_scope.sh:*)",
+      "Bash(nice -n 15 timeout 600 .venv/bin/python -m pytest:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(.venv/bin/python -m unittest:*)",
+      "Bash(python3 -m unittest:*)",
+      "Bash(python3 -m py_compile:*)"
+    ],
     "deny": [
       "Bash(ssh:*)",
       "Bash(scp:*)",
