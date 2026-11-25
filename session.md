@@ -4,6 +4,19 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-24 — kapsam kancası K1 birleştirmesi (`8f36b6b`)
+**Yapılanlar:**
+- Kullanıcı K1 onayı verdi; `tools/birlestir_k1.sh` kullanıcı tarafından çalıştırıldı (`K1_ONAY=agent/kanca-kapsam-v2`, izin dosyası 10 dosya). Ana dal `0a4d9ea` üstüne `8f36b6b` merge commit'i oluştu; birleşen içerik dalın farkıyla birebir aynı.
+- Birleşme sonrası `scope_guard.py` Bash bulgularını uyarı olarak yazar; `permissions.allow`/`deny` ayarları devrede.
+- Tam takım bu dalda 736 passed, 3 skipped, çıkış 0 (birleşme öncesi).
+
+**Açık sorunlar:**
+- `git push origin faz-4-yasam-dongusu` kullanıcı tarafından bekleniyor (proje yasağı nedeniyle ajan push etmez).
+- Bash genel yasakları artık kancada uyarı; `docker`/`ssh` engeli yalnızca `permissions.deny` ön eklerinde. `curl` testinde listede olmayan komut engellenmedi.
+- `agent/kanca-dorduncu-tur` ve `wt-kanca4` silme kararı kullanıcıda.
+
+**Sıradaki adım:** Push sonrası GitHub başını doğrulamak; sonra eski dalı silme kararı.
+
 ## 2026-11-24 — kapsam kancası: Bash uyarıya çevrildi, izin listesi eklendi
 **Yapılanlar:**
 - Kapsam kancası dördüncü tur (`agent/kanca-dorduncu-tur`) bağımsız doğrulamadan geçemedi: ~21 Bash atlatması (ör. `cd src && echo x > a.py`, `tar -xf a.tar -C src`, `sh <<< 'rm -rf x'`). Regex düzeltmeleri bu dala commit'lenmedi (`d3da116` eski dal üzerinde kaldı; bu kayıt yeni dalda `agent/kanca-kapsam-v2`).
