@@ -21,6 +21,7 @@ Durum: 2026-11-24. Açık kararlar `PROJE.md` Bölüm 17'dedir; fikirler `backlo
 
 ## ✅ Tamamlanan
 
+- [x] 2026-11-25 — 24 Kasım akşam kontrolü (salt okunur): 19:00 koşusu (17:00 CET) çıkış 0, 150 tahmin, 0 zaten vardı, 600 `horizon_unknown` atlaması (beklenen); 19:45 yeniden deneme atlandı (zaten başarılı); 20:30 sağlık SAGLIKLI; ALERT yok; devre kesici kapalı; aktif model yok; disk %92 (17 GB boş). Ayrıntı: `session.md` 2026-11-25.
 - [x] 2026-11-24 — Kapsam kancası: Bash bulguları uyarıya çevrildi, `.claude/settings.json` izin listesi eklendi (engelleme etkisi doğrulanmadı) (`agent/kanca-kapsam-v2`, faz-4 üstünde; commit: bkz. dal). Kanca testleri 75/75; tam takım bu dalda koşuldu.
 - [x] 2026-11-24 — Günlük akış kontrolü (salt okunur): 19, 20 ve 23 Kasım koşuları çıkış 0, her biri 150 tahmin; `health` SAGLIKLI; devre kesici kapalı; haftalık rapor 21 Kasım üretildi; ALERT yok.
 - [x] 2026-11-19 — faz-4 origin'e push: `9fc29a0..2532893`.

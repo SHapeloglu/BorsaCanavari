@@ -4,6 +4,25 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-25 — 24 Kasım akşam kontrolü (salt okunur)
+**Yapılanlar:**
+- Sunucuya salt okunur ssh ile bakıldı (kullanıcı "kontrol et" onayı). Yazma, derleme ya da cron değişikliği yok.
+- `run-daily.log`: 24 Kasım 17:00 CET (19:00 İstanbul) koşusu başladı ve çıkış 0 ile bitti. Evren 30 (eklenen/kapanan 0), fetch 33 hisse (hata 0, bayrak 1), çözülen 150, atlanan `horizon_unknown` 600, tahmin yazıldı 150 (zaten vardı 0). Aktif model yok.
+- 17:45 CET (19:45 İstanbul) yeniden deneme: "bugün zaten başarılı" diyerek atlandı.
+- Sağlık (`health.log`, 18:30 CET = 20:30 İstanbul): SAGLIKLI, çıkış 0. Son başarılı akış 24 Kasım 19:00; veri son bar 24 Kasım; vadesi geçmiş çözülmemiş tahmin yok; devre kesici kapalı (geçmiş kayıt 0); takılı `running` kaydı yok.
+- `ALERT.txt` yok. Disk `/` %92 (177G kullanılan, 17G boş); önceki ölçüm %94.
+
+**Kararlar / neden:**
+- Önceki kontrolde (10:50 İstanbul) 24 Kasım sonucu yoktu; sonuç bu kez doğru saatte alındı. 25 Kasım 19:00 sonucu bir sonraki kontrolde ayrıca okunacak.
+
+**Açık sorunlar:**
+- Disk %92; diskte temizlik yok. Diğer projelerin imajları silinmedi.
+- `horizon_unknown` log mesajı iyileştirilebilir (backlog).
+
+**Sıradaki adım:** 25 Kasım 19:00 İstanbul koşusu ve 20:30 sağlık kontrolü.
+
+---
+
 ## 2026-11-24 — kapsam kancası K1 birleştirmesi (`8f36b6b`)
 **Yapılanlar:**
 - Kullanıcı K1 onayı verdi; `tools/birlestir_k1.sh` kullanıcı tarafından çalıştırıldı (`K1_ONAY=agent/kanca-kapsam-v2`, izin dosyası 10 dosya). Ana dal `0a4d9ea` üstüne `8f36b6b` merge commit'i oluştu; birleşen içerik dalın farkıyla birebir aynı.

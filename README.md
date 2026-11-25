@@ -12,7 +12,7 @@ Tasarımın tek kaynağı [`PROJE.md`](PROJE.md). Mimari için [`architect.md`](
 - **Sağlık:** Sağlık cron'u 20:30'da çalışıyor (19 Kasım'dan beri); `bist health` SAGLIKLI, devre kesici kapalı.
 - **Modeller:** Altyapı hazır (kayıt, eğitim, terfi kontrolü, champion koruması), ama **champion yok**. Terfi bilerek manuel ve kanıt gerektiriyor.
 - **Araştırma:** Üç ön-kayıtlı deney ve `faz35-v2` (E4–E6) koşuldu; hiçbir model baz oranı Brier'da geçmedi. Hisseler arası küçük bir sıralama sinyali var; maliyetten sonra kullanılamıyor.
-- **Açık:** 19:00 (24 Kasım) koşusunun ve 20:30 sağlık kontrolünün sonucu; sunucu diski %94 (bkz. task.md). `horizon_unknown` atlamaları açıklandı: vadesi henüz dolmamış tahminler, beklenen davranış.
+- **Açık:** 25 Kasım 19:00 koşusunun ve 20:30 sağlık kontrolünün sonucu; sunucu diski %92 (bkz. task.md). 24 Kasım akşam koşusu çıkış 0 ve 150 tahmin, 20:30 sağlık SAGLIKLI (2026-11-25 kontrolü). `horizon_unknown` atlamaları açıklandı: vadesi henüz dolmamış tahminler, beklenen davranış.
 
 ## Kurulum (yerel)
 
