@@ -598,7 +598,7 @@ def karar(veri, ortam) -> None:
         try:
             _bash_kontrol(girdi, kontrat)
         except Engel as hata:
-            sys.stderr.write(f"UYARI (Bash, sinir degil; sinir izin listesidir): {hata}\n")
+            sys.stderr.write(f"UYARI (Bash, sinir degil; izin listesi listede olmayani engellemez): {hata}\n")
     else:
         _yazma_kontrol(arac, girdi, root, kontrat)
 

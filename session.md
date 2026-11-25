@@ -4,7 +4,7 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
-## 2026-11-24 — kapsam kancası: Bash uyarıya çevrildi, sınır izin listesi
+## 2026-11-24 — kapsam kancası: Bash uyarıya çevrildi, izin listesi eklendi
 **Yapılanlar:**
 - Kapsam kancası dördüncü tur (`agent/kanca-dorduncu-tur`) bağımsız doğrulamadan geçemedi: ~21 Bash atlatması (ör. `cd src && echo x > a.py`, `tar -xf a.tar -C src`, `sh <<< 'rm -rf x'`). Regex düzeltmeleri bu dala commit'lenmedi (`d3da116` eski dal üzerinde kaldı; bu kayıt yeni dalda `agent/kanca-kapsam-v2`).
 - `scope_guard.py`: Bash bulguları artık yalnızca `UYARI (Bash, sinir degil...)` olarak yazılır, exit 0. Edit/Write yol kontrolü (`KOD_YOLLARI`, korumalı kanca dosyaları, sözleşme `write` ve `deny`) zorlayıcı kalır.
@@ -12,7 +12,7 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 - Testler: `test_scope_guard.py` ve `test_scope_guard_bash.py` Bash beklentilerini uyarı olarak güncellendi.
 
 **Kararlar / neden:**
-- Shell metni regex ile tam ayrıştırılamıyor; her turda yeni atlatma çıkıyor. Bash sınırı izin listesi katmanına taşındı.
+- Shell metni regex ile tam ayrıştırılamıyor; her turda yeni atlatma çıkıyor. Bash için sert sınır iddiası yapılmıyor; izin listesi yalnızca onaylı komutları otomatik kılar. Canlı testte (`curl --version`) listede olmayan komut engellenmedi, `docker --version` ise kanca tarafından engellendi. Birleşme sonrası Bash genel yasakları kancada uyarıya döner; sert engel `permissions.deny` ön ekleriyle kalır.
 - `permissions.allow`/`deny` önek eşleşmesidir. `bash -c "..."` gibi dolaylı çağrılar bu listeleri aşabilir; bu bilinen sınırdır, sınır iddiası yapılmaz.
 - `git add -f .env` `.gitignore`'u aşabilir ve izin listesi `git add`'i serbest bıraktığı için bu yol açık; doğrulanmadı.
 

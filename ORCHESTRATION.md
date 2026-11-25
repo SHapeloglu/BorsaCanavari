@@ -2,7 +2,7 @@
 
 Bu dosya, bu depoda birden fazla ajanın birlikte çalıştığı işlerin kurallarıdır. `CLAUDE.md` genel kuralları, `PROJE.md` tasarımı tanımlar; bu dosya **ajanların nasıl koordine olduğunu** tanımlar. Çelişkide `PROJE.md` ve `CLAUDE.md` kazanır.
 
-Sürüm: 4 (2026-11-24). Sürüm 4: zorlama katmanı sayısı üçten dörde çıktı (kapsam kancası eklendi, §3). Kanca Bash için yalnızca uyarı üretir; Bash sınırı `.claude/settings.json` izin listesidir (§3, §9). Sürüm 2'de "izinler araç düzeyinde zorlanmıyor" notu kaldırılmıştı; zorlama alt ajan tanımları, proje izin ayarları ve mekanik kapılarla yapılır (bkz. §3). Sürüm 3 ile: kapsam kapısı betiğe bağlandı (§3), birleştirme yalnızca insan betiğiyle yapılır (§4), kapsam dışı talep akışı ve izin dosyası şablonu eklendi (§4, §8).
+Sürüm: 4 (2026-11-24). Sürüm 4: zorlama katmanı sayısı üçten dörde çıktı (kapsam kancası eklendi, §3). Kanca Bash için yalnızca uyarı üretir; Bash için sert sınır yoktur: izin listesi onaylı komutları otomatik kılar, listede olmayanların engellenmesi bu ortamda doğrulanmadı (§3, §9). Sürüm 2'de "izinler araç düzeyinde zorlanmıyor" notu kaldırılmıştı; zorlama alt ajan tanımları, proje izin ayarları ve mekanik kapılarla yapılır (bkz. §3). Sürüm 3 ile: kapsam kapısı betiğe bağlandı (§3), birleştirme yalnızca insan betiğiyle yapılır (§4), kapsam dışı talep akışı ve izin dosyası şablonu eklendi (§4, §8).
 
 ## 1. Roller
 
@@ -30,7 +30,7 @@ Kural metni tek başına yetmez; dört katman birlikte çalışır:
 
 1. **Araç listesi (alt ajan tanımı):** Uygulayıcıda Edit/Write vardır, doğrulayıcıda yoktur. Lider ana oturumdur; "kod yazmaz" kuralı ana oturumun kendi davranışıyla sağlanır, bu yüzden lider kod değişikliğini alt ajana devreder.
 2. **Proje izin ayarları (`.claude/settings.json`):**
-   - `permissions.allow`: Bash için izinli komut önekleri (git status/diff/log/add/commit, `scripts/verify_task.sh`, `scripts/check_scope.sh`, pytest ve unittest çağrıları). Proje genelinde geçerlidir; alt ajana özel değildir.
+   - `permissions.allow`: Bash için otomatik onaylanan komut önekleri (git status/diff/log/add/commit, `scripts/verify_task.sh`, `scripts/check_scope.sh`, pytest ve unittest çağrıları). Proje genelinde geçerlidir; alt ajana özel değildir. Listede olmayan komutları **engellemez**; bu ortamda ne yaptığı doğrulanmadı (`curl --version` testinde engellenmeden çalıştı).
    - `permissions.deny`: ssh, scp, docker, `git push|pull|merge`, `git reset --hard`, `rm -rf`, `.env` okuma. Bu liste sunucu ve ağ işlerini araç düzeyinde engeller.
    - İki liste de komut önekiyle eşleşir. `bash -c "..."` gibi dolaylı çağrılar bu listeleri aşabilir; bu bilinen bir sınırdır.
 3. **Kapsam kapısı (mekanik betik, `tools/kapsam_kapisi.sh`):** `tools/kapsam_kapisi.sh <taban-sha> <dal> <izin-dosyasi>` çalıştırılır. `git diff --name-only <taban-sha> <dal>` çıktısındaki her dosya izin dosyasında değilse dal doğrulayıcıya gitmeden geri çevrilir. Betik dosya yazmaz; lider de çalıştırabilir.
@@ -39,7 +39,8 @@ Kural metni tek başına yetmez; dört katman birlikte çalışır:
 
 4. **Kapsam kancası (`PreToolUse`, `.claude/hooks/scope_guard.py`, `.claude/settings.json` içinde `hooks`):**
    - Edit, Write, MultiEdit ve NotebookEdit için hedef yolu **zorlayıcı** denetler: lider modunda kod yolları (`src/`, `tests/`, `scripts/`, `deploy/`, `.claude/hooks/`) engellenir; görev sözleşmesi (`BIST_TASK_CONTRACT`) verildiğinde yazma yalnızca `write` globlarında olabilir. Kanca yapılandırma dosyaları (`settings.json`, `.claude/contracts/**`, `.claude/hooks/**`) her modda yazılamaz.
-   - Bash için **yalnızca uyarı** üretir (`UYARI (Bash, sınır değil...)`, exit 0). Shell metni regex ile güvenilir ayrıştırılamadığı için Bash bulguları sınır sayılmaz; Bash sınırı yukarıdaki izin listesidir.
+   - Bash için **yalnızca uyarı** üretir (`UYARI (Bash, sınır değil...)`, exit 0). Shell metni regex ile güvenilir ayrıştırılamadığı için Bash bulguları sınır sayılmaz.
+   - **Birleşme sonucu:** Bu değişiklik faz-4'e girdiğinde Bash'in genel yasakları (ssh, docker, `git push|pull|merge`, `rm -rf` vb.) kancada uyarıya döner. Sert engel yalnızca `permissions.deny` ön ek listesinde kalır; o da `bash -c "..."` gibi dolaylı çağrılara karşı korumasızdır.
 
 Bu katmanların hiçbiri Bash komut içeriğini tam denetleyemez. Doğrulayıcı tanımındaki "git add/commit yasak" kuralı yalnızca ajan tanımı metniyle sağlanır; izin listesi proje genelinde olduğu için bu kural araç düzeyinde zorlanmaz. Bu yüzden doğrulayıcı kanıtı bağımsız olarak yeniden üretir (§5).
 
