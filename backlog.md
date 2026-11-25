@@ -39,7 +39,7 @@ Bu liste karar değildir. Bir madde işe dönüşürse `task.md`'ye taşınır; 
 - **Resolve atlamaları (`horizon_unknown`):** açıklandı (24 Kasım): vadesi takvimin son işlem gününü aşan, henüz olgunlaşmamış tahminler; son 4 tahmin günü × 150. Beklenen davranış. Küçük iyileştirme: log mesajı "vade bilinemiyor" yerine "henüz olgunlaşmadı" olabilir.
 - **Uyarı kanalı:** `ALERT.txt` (ALERT.txt sunucu yolu; repoda yok, sunucuda doğrulanmalı) ve syslog dışında bildirim yok (e-posta/Slack yok). Karar: rapor yeri (PROJE açık soru 5).
 - **CI:** yok. Tam takım yerelde; birleşik iş akışı için bir CI değerlendirilebilir.
-- **Test süresi:** tam takım 2–10 dk; hızlı alt küme tanımı (`pytest -m fast`).
+- **Test süresi:** tam takım 2–10 dk. `fast` işaretli çekirdek alt küme var (`pytest -m fast`, 41 test dosyası); süre ölçümü ve CI kararı açık.
 - **Dal yönetimi:** `main` yok; çalışma dalları `faz-*`. Birleştirme stratejisi ve varsayılan dal kararı gerekir.
 - **Splits önbelleğinin iki dalda kopyası:** `cab326c` (faz-4) ve `ff60a45` (deploy-splits-fix) aynı değişiklik; ana dala tek kopya alınmalı.
 - **ISG klasörü:** depo içinde, `.gitignore`'da, ayrı bir proje. Taşıma ya da ayırma kararı.

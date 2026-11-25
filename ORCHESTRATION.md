@@ -77,7 +77,7 @@ Uygulayıcı izin dışındaki bir dosyaya ihtiyaç duyarsa o dosyayı kendisi d
 
 Lider bu üç satırı insana iletir. İnsan tek kelimeyle yanıt verir: `ONAY` ya da `RED`. Onaysız kapsam dışına çıkılmaz. Onaylanırsa izin dosyası güncellenir ve kapsam kapısı yeniden çalıştırılır; reddedilirse dosya dala girmez.
 
-Bu konu açık: CLAUDE.md:35 ile K1 uyumu kullanıcı kararı bekliyor. 2026-11-19'da beş dal kullanıcı onayıyla faz-4'e birleşti; kanca birleştirmeyi engellediği için birleştirme insan tarafından yapılır.
+Bu konu açık: CLAUDE.md:35 ile K1 uyumu kullanıcı kararı bekliyor. 2026-11-19'da beş dal kullanıcı onayıyla faz-4'e birleşti; 2026-11-24'te kapsam kancası dalı (`agent/kanca-kapsam-v2`, `8f36b6b`) K1 onayıyla birleşti. Kanca birleştirmeyi engellediği için birleştirme insan tarafından yapılır.
 
 ## 5. Doğrulayıcı kuralları
 

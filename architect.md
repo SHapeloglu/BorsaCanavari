@@ -1,6 +1,6 @@
 # architect.md — BIST Tahmin Laboratuvarı: mimari
 
-Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-24.
+Karar gerekçeleri ve sayısal kabul kriterleri `PROJE.md`'dedir. Bu dosya **nasıl bağlandığını** anlatır. Durum: 2026-11-25.
 
 ## Bileşenler
 

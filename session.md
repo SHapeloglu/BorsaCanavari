@@ -30,11 +30,11 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 - Tam takım bu dalda 736 passed, 3 skipped, çıkış 0 (birleşme öncesi).
 
 **Açık sorunlar:**
-- `git push origin faz-4-yasam-dongusu` kullanıcı tarafından bekleniyor (proje yasağı nedeniyle ajan push etmez).
+- ~~`git push origin faz-4-yasam-dongusu` kullanıcı tarafından bekleniyor~~ — 2026-11-25 kontrolünde `origin/faz-4-yasam-dongusu` yerel başla (`f23524b`) aynı bulundu; push ajan tarafından yapılmadı.
 - Bash genel yasakları artık kancada uyarı; `docker`/`ssh` engeli yalnızca `permissions.deny` ön eklerinde. `curl` testinde listede olmayan komut engellenmedi.
 - `agent/kanca-dorduncu-tur` ve `wt-kanca4` silme kararı kullanıcıda.
 
-**Sıradaki adım:** Push sonrası GitHub başını doğrulamak; sonra eski dalı silme kararı.
+**Sıradaki adım:** GitHub başı doğrulandı (2026-11-25, yerel ile aynı); eski dalı silme kararı kullanıcıda.
 
 ## 2026-11-24 — kapsam kancası: Bash uyarıya çevrildi, izin listesi eklendi
 **Yapılanlar:**

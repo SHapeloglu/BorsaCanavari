@@ -2,7 +2,7 @@
 
 Bu dosya projenin tek kaynak gerçeğidir (single source of truth). Bu projede çalışan her oturum, kod yazmadan önce bu dosyayı baştan sona okumalı. Bir karar değişirse önce bu dosya güncellenir, sonra kod.
 
-Sürüm: v3.5 (2026-11-24). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
+Sürüm: v3.6 (2026-11-25). Değişiklikler en altta, "Değişiklik günlüğü" bölümünde.
 
 ---
 
@@ -606,7 +606,7 @@ Bu sorular cevaplanana kadar ilgili değerler varsayılan olarak bırakılır ve
 - **Veri sağlayıcı değişikliği:** borsapy veya TradingView erişimi değişebilir. Veri kaynağı soyutlama katmanı arkasında tutulur. TradingView WebSocket erişimi resmi bir ürün değildir.
 - **Deneme şişmesi:** Backtest laboratuvarı çok deneme üretir. Sınama kümesi, çoklu deneme düzeltmesi ve canlı gölge çalıştırma bunun içindir.
 - **Paylaşımlı altyapı:** `postgres-ortak` 12 veritabanına hizmet eder. Bu projenin yükü çok küçük olsa da `statement_timeout` ve bağlantı sınırı konur.
-- **Disk:** 2026-11-08'de %88 ölçüldü; güncel değer sunucuda ölçülmeli. Proje veri hacmi küçüktür; yine de disk durumu izlenir.
+- **Disk:** 2026-11-08'de %88, 2026-11-25'te %92 (17 GB boş) ölçüldü. Proje veri hacmi küçüktür; ama disk paylaşımlı sunucuda ve diğer projelerin imajları da yer kaplar; disk durumu her kontrolde izlenir.
 - **Lisans:** borsapy kullanım koşulları veriyi ticari amaçla kullanmayı yasaklar; Borsa İstanbul veri dağıtımını lisansa bağlar. Bu proje kişisel ve eğitim amaçlıdır.
 - **Kullanıcı yanılgısı:** Sistemin "tahmin ettiği" izlenimi yaratılabilir. Raporlar her zaman belirsizliği, örneklem sayısını ve farklı gün sayısını gösterir.
 
@@ -647,6 +647,7 @@ bist init --dry-run && bist init
 
 ## Değişiklik günlüğü
 
+- **v3.6 (2026-11-25): Sunucu kontrolü ve doküman hizası (yalnız doküman; tasarım kararı değişmedi).** 24 Kasım akşam koşusu (19:00 İstanbul) çıkış 0, 150 tahmin, 600 `horizon_unknown` atlaması (beklenen); 20:30 sağlık SAGLIKLI; disk %92. Bölüm 18 disk notu güncellendi.
 - **v3.5 (2026-11-24): Sunucu imajı güncellendi (yalnız doküman; tasarım kararı değişmedi).** `bist-tahmin:latest` = `bist-tahmin:head-b549f0d` (`b3b284670391`); önceki `prev-20261124` (holdout `d6036647f670`). Runtime kodu `5665b38` ile aynı (inceleme düzeltmeleri). Kuru çalıştırma ve `health` temiz. Migration yok, şema değişmedi.
 - **v3.4 (2026-11-24): Sunucu durumu (yalnız doküman; tasarım kararı değişmedi).** (1) Holdout kanıt düzeltmesi (`7b29738`) sunucuya uygulandı: `bist-tahmin:latest` = `d6036647f670` (2026-11-19); önceki imaj `prev-20261119`. (2) Sağlık cron'u `/etc/cron.d/bist-tahmin`'e eklendi (20:30 İstanbul). (3) Faz 3 ve 3.5 durum satırları güncellendi: üyelik ve fiyat yükleme 2026-11-11'de yapıldı; haftalık rapor cron'dan üretiliyor. (4) Faz 4 durumu holdout düzeltmesiyle güncellendi; champion yok.
 - **v3.3 (2026-11-14): Olgusal düzeltmeler (yalnız doküman; tasarım kararı değişmedi).** (1) Bölüm 4: `period="5y"` yaklaşık 1260 işlem günü, ~5 yıl (önceki 1825 değeri takvim gününe aitti). (2) Bölüm 7: proje yapısı gerçek koda göre güncellendi (monitor/, pipeline.py, jobs.py, backtest/ alt modülleri, predict/ledger.py, models/logreg.py ve promote.py, deploy/, reference/, tools/, tests listesi); migration listesi 001–007 (006_system_state, 007_champion_guard). (3) Bölüm 13: `test_purge.py` repoda yok; purge kuralı `tests/test_splits.py::test_purge_label_window_never_crosses_first_test_day` ile sınanıyor, madde ve Bölüm 7 ağacı buna göre düzeltildi. (4) Bölüm 12 devre kesici tetik metni koda hizalandı: model satırları ilk alarmda durur, baseline sürer (kod davranışı değişmedi; önceki "drift alarmı sürerse" metni yanlıştı; kaynak `pipeline._monitor`, `breaker.py`). Tasarım kararı değil, belge düzeltmesi. Devre kesici maliyet paragrafı (21bf48c) bu sürümde Bölüm 12'de yer alır. (5) Bölüm 15: Faz 3.5 maliyet tutarsızlığının 10 bps tek yön düzeltmesi (3763105) işlendi; Faz 4 başlığına durum etiketi eklendi. (6) Bölüm 19: cron açıklaması Bölüm 15 Faz 2 ile hizalandı (`CRON_TZ` bu sunucuda çalışmaz; Berlin saatiyle iki olası saat ve `ONLY_IST_HOUR`). (7) Bölüm 18: disk değeri tarihli yazıldı (2026-11-08 %88; güncel değer sunucuda ölçülmeli). (8) Bölüm 3 zaman dilimi satırı: "cron Europe/Istanbul" ifadesi Bölüm 15 ve 19 ile çelişiyordu; uygulama Europe/Istanbul, cron Berlin saatiyle `ONLY_IST_HOUR` korumasıyla çalışır olarak düzeltildi. Çelişkinin giderilmesi, tasarım kararı değil.

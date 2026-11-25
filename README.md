@@ -6,7 +6,7 @@ BIST 30 için 5 işlem günü yön olasılığı üreten, tahminleri gerçekleş
 
 Tasarımın tek kaynağı [`PROJE.md`](PROJE.md). Mimari için [`architect.md`](architect.md), çalışma kuralları için [`CLAUDE.md`](CLAUDE.md), güncel işler için [`task.md`](task.md), fikirler için [`backlog.md`](backlog.md), oturum günlüğü için [`session.md`](session.md).
 
-## Durum (2026-11-24)
+## Durum (2026-11-25)
 
 - **Canlı:** Contabo sunucusunda günlük akış (19:00 İstanbul) çalışıyor. 24 Kasım'dan beri `bist-tahmin:latest` güncel koddan (`b549f0d`, `b3b284670391`); önceki holdout imajı `prev-20261124`; 19, 20 ve 23 Kasım koşuları çıkış 0 ve 150'şer tahmin yazdı (hafta sonu koşu yok). 21 Kasım haftalık rapor üretildi. 11 ve 12 Kasım kontrollerinin sonucu kayıtlı değil (bkz. task.md).
 - **Sağlık:** Sağlık cron'u 20:30'da çalışıyor (19 Kasım'dan beri); `bist health` SAGLIKLI, devre kesici kapalı.
