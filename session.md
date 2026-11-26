@@ -4,6 +4,29 @@ Yeni kayıtlar en üste. Her kayıt: yapılanlar, kararlar ve nedeni, açık sor
 
 ---
 
+## 2026-11-26 — SuperBI salt okunur rol (`bist_readonly`) sunucuda oluşturuldu
+**Yapılanlar (sunucu, kullanıcı çalıştırdı; ben komut ve çıktıları doğruladım):**
+- Kuru kontrol (`deploy/superbi_readonly.sql` 1. bölüm, `ROLLBACK` ile): rol yoktu; 9 hedef tablo mevcut; PUBLIC ve `bist_readonly` için tablo yetkisi yoktu.
+- Uygulama (2. bölüm, `BEGIN/COMMIT`, saat 14:34 İstanbul, cron penceresi dışı): rol `LOGIN NOINHERIT CONNECTION LIMIT 3`; `default_transaction_read_only=on`, `statement_timeout=30s`; `predictions, models, experiments, runs, system_state` için SELECT; `prices, corporate_actions, universe_membership, trading_calendar` için REVOKE.
+- Doğrulama (rolle bağlantı): `predictions` 1950 satır okundu; `prices` "permission denied"; `INSERT INTO runs` "cannot execute INSERT in a read-only transaction".
+- Parola: ilk denemede rolün kendi oturumunda `\password` salt okunur kuralla engellendi (yazma yapılmadı). Parola yönetici (`postgres`) oturumundan `docker exec postgres-ortak psql -U postgres` ile verildi; parola ne ekrana ne kayda yazıldı.
+- Ağ yolu doğrulandı: `pg_hba.conf` içinde `local`/`127.0.0.1`/`::1` için `trust`, ağ bağlantıları için `host all all all scram-sha-256`. `hostname -i` adresiyle bağlanınca parola istendi ve giriş yapıldı. SuperBI'nin `ortak-db` üzerinden bağlanacağı yol bu.
+
+**Kararlar / neden:**
+- Yalnızca türetilmiş tablolara yetki (`PROJE.md` Bölüm 4 lisans kısıtı: ham fiyat tabloları rol için kapalı).
+- Yanlışlıkla yapılan iki hata: bash'e yazılan SQL ve psql içine yapıştırılan `docker exec` satırı hiçbir şey çalıştırmadı (noktalı virgül yok / komut bash'te hata verdi).
+- Doğrulama için `INSERT` denemesi yanlış tasarlanmıştı (ayar çalışmıyorsa üretim tablosuna yazabilirdi); ayar çalıştığı için yazma olmadı, ama kalıcı test olarak kullanılmamalı. Sonraki testler `BEGIN READ ONLY` ile yapılmalı.
+
+**Açık sorunlar:**
+- SuperBI'den bağlantı henüz denenmedi (`postgres-ortak`, `bist_tahmin`, `bist_readonly`, parola SuperBI'de girilecek).
+- `pg_hba.conf` yerel `trust` içeriyor; konteyner içinde root erişimi olan biri zaten her şeye erişebildiği için yeni risk değil, ama not düşüldü.
+- `/opt/postgres-ortak/session.md` kaydı: ortak servise dokunuldu (rol eklendi); bu not oraya da düşülmeli (`CLAUDE.md` kuralı). Yapılmadı.
+- `deploy/superbi_readonly.sql` başlığındaki "TASLAK, uygulanmadı" notu güncel değil.
+
+**Sıradaki adım:** SuperBI'de bağlantıyı tanımla ve bir dataset (`predictions`) oluştur; holdout'u dashboard'da model seçimi için kullanma (`CLAUDE.md`). Raporlara sorumluluk notunu ekle.
+
+---
+
 ## 2026-11-25 — dal temizliği ve ayar kontrolü
 **Karar sonrası (kullanıcı onayı "onaylıyorum"):** uzak `deploy-splits-fix` silindi. Dalda faz-4'te olmayan tek commit `ff60a45` idi; splits değişikliği faz-4'te `cab326c` olarak var (aynı patch-id `07151f3`). Yerel `deploy-splits-fix` dalı `ff60a45` üzerinde arşiv olarak kaldı. README "Dallar" bölümü buna göre güncellendi.
 
